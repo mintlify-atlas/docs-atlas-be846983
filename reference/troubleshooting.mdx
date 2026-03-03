@@ -1,0 +1,905 @@
+---
+title: "Troubleshooting"
+description: "Common issues, error messages, and solutions for HTTPSpec integration tests"
+---
+
+## Overview
+
+This guide helps you diagnose and fix common issues when running HTTPSpec tests. Errors are categorized by type with explanations of error messages and solutions.
+
+---
+
+## Parse Errors
+
+Parse errors occur when HTTPSpec cannot parse your `.http` or `.httpspec` file.
+
+### InvalidRequestMissingMethod
+
+**Error Message:**
+```
+Failed to parse file tests/example.http: InvalidRequestMissingMethod
+```
+
+**Cause:** The HTTP request line is missing or doesn't start with a valid HTTP method.
+
+**Source:** parser.zig:152
+
+**Solution:**
+
+Ensure each request starts with a valid HTTP method:
+
+```http
+# Incorrect
+https://api.example.com
+
+# Correct
+GET https://api.example.com
+```
+
+**Valid HTTP methods:** GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
+
+---
+
+### InvalidRequestMissingURL
+
+**Error Message:**
+```
+Failed to parse file tests/example.http: InvalidRequestMissingURL
+```
+
+**Cause:** The request line is missing the URL after the HTTP method.
+
+**Source:** parser.zig:153
+
+**Solution:**
+
+```http
+# Incorrect
+GET
+
+# Correct
+GET https://api.example.com/users
+```
+
+---
+
+### InvalidHttpVersion
+
+**Error Message:**
+```
+Failed to parse file tests/example.http: InvalidHttpVersion
+```
+
+**Cause:** The HTTP version specified is not supported.
+
+**Source:** parser.zig:158
+
+**Supported versions:**
+- `HTTP/1.0`
+- `HTTP/1.1` (default)
+- `HTTP/2`
+- `HTTP/3`
+
+**Solution:**
+
+```http
+# Incorrect
+GET https://api.example.com HTTP/9.9
+
+# Correct
+GET https://api.example.com HTTP/1.1
+GET https://api.example.com HTTP/2
+
+# Default (HTTP/1.1 is assumed if omitted)
+GET https://api.example.com
+```
+
+---
+
+### InvalidHeaderFormat
+
+**Error Message:**
+```
+Failed to parse file tests/example.http: InvalidHeaderFormat
+```
+
+**Cause:** A header line doesn't follow the `Name: Value` format.
+
+**Source:** parser.zig:172
+
+**Solution:**
+
+```http
+# Incorrect
+Content-Type application/json
+Authorization = Bearer token
+
+# Correct
+Content-Type: application/json
+Authorization: Bearer token
+```
+
+<Note>
+Headers must have a colon (`:`) separating the name and value. Whitespace around the colon is trimmed.
+</Note>
+
+---
+
+### InvalidAssertionFormat
+
+**Error Message:**
+```
+Failed to parse file tests/example.http: InvalidAssertionFormat
+```
+
+**Cause:** An assertion line is missing required components (key, operator, or value).
+
+**Source:** parser.zig:134, 137, 143
+
+**Solution:**
+
+Assertion syntax requires all three parts:
+
+```http
+# Incorrect - missing operator
+//# status 200
+
+# Incorrect - missing value
+//# status ==
+
+# Incorrect - missing key
+//# == 200
+
+# Correct
+//# status == 200
+//# body contains "success"
+//# header["content-type"] == "application/json"
+```
+
+**Assertion format:**
+```
+//# <key> <operator> <value>
+```
+
+<Accordion title="Valid Assertion Components">
+
+**Keys:**
+- `status` - HTTP status code
+- `body` - Response body content
+- `header["name"]` - Specific header value
+
+**Operators:**
+- `==`, `equal`
+- `!=`, `not_equal`
+- `contains`
+- `not_contains`
+- `starts_with`
+- `ends_with`
+- `matches_regex`
+- `not_matches_regex`
+
+**Values:**
+- Any string (quotes are optional unless value contains spaces)
+
+</Accordion>
+
+---
+
+## Assertion Failures
+
+Assertion failures occur when responses don't match expected values. HTTPSpec reports detailed failure information.
+
+### Understanding Failure Messages
+
+Failure messages follow this format (assertion_checker.zig:120-138):
+
+```
+[Fail] in <file>:<assertion_number> <details>
+```
+
+**Example:**
+```
+[Fail] in tests/users.http:1 Expected status 200, got 404
+```
+
+---
+
+### status_mismatch
+
+**Error Message:**
+```
+[Fail] in tests/api.http:3 Expected status 200, got 500
+```
+
+**Cause:** The actual HTTP status code doesn't match the expected value.
+
+**Source:** assertion_checker.zig:129
+
+**Solution:**
+
+<AccordionGroup>
+
+<Accordion title="Check API Response">
+
+1. Verify the API endpoint is correct
+2. Check request headers and body
+3. Ensure the server is running
+4. Review server logs for errors
+
+```http
+# Add debugging - check what status you're actually getting
+GET https://api.example.com/users
+
+//# status == 200  # Might be failing
+```
+
+</Accordion>
+
+<Accordion title="Update Expected Value">
+
+If the API behavior has changed:
+
+```http
+# Old expectation
+//# status == 200
+
+# Updated expectation
+//# status == 201  # API now returns 201 for created resources
+```
+
+</Accordion>
+
+<Accordion title="Use Range Checks">
+
+For flexible status checking:
+
+```http
+# Accept any 2xx status
+//# status starts_with 2
+
+# Accept 200 or 201
+//# status matches_regex ^20[01]$
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+### header_mismatch
+
+**Error Message:**
+```
+[Fail] in tests/api.http:2 Expected header "content-type" to be "application/json", got "text/plain"
+```
+
+**Cause:** The header value doesn't match the expected value.
+
+**Source:** assertion_checker.zig:130
+
+**Solution:**
+
+```http
+# Check exact value
+//# header["content-type"] == "application/json"
+
+# Or use contains for flexibility
+//# header["content-type"] contains "json"
+```
+
+<Note>
+Header value comparison is case-insensitive (assertion_checker.zig:207).
+</Note>
+
+---
+
+### header_missing
+
+**Error Message:**
+```
+[Fail] in tests/api.http:4 Expected header "x-custom-header" to be "value", but header was missing
+```
+
+**Cause:** The expected header is not present in the response.
+
+**Source:** assertion_checker.zig:131
+
+**Solution:**
+
+<AccordionGroup>
+
+<Accordion title="Verify Header Name">
+
+Check for typos in the header name:
+
+```http
+# Incorrect - typo in header name
+//# header["conten-type"] == "application/json"
+
+# Correct
+//# header["content-type"] == "application/json"
+```
+
+</Accordion>
+
+<Accordion title="Check Server Response">
+
+Use curl or another tool to inspect actual headers:
+
+```bash
+curl -I https://api.example.com/endpoint
+```
+
+</Accordion>
+
+<Accordion title="Optional Header Check">
+
+If the header should be absent:
+
+```http
+# This will pass if header is missing OR has different value
+//# header["x-custom"] != "unwanted-value"
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+### body_mismatch
+
+**Error Message:**
+```
+[Fail] in tests/api.http:1 Expected body "success", got "error occurred"
+```
+
+**Cause:** The response body doesn't match the expected value.
+
+**Source:** assertion_checker.zig:132
+
+**Solution:**
+
+<AccordionGroup>
+
+<Accordion title="Use Flexible Matching">
+
+Instead of exact equality, use `contains`:
+
+```http
+# Too strict - exact match required
+//# body == "{\"status\":\"success\",\"id\":123}"
+
+# Better - check for key content
+//# body contains "success"
+//# body contains "id"
+```
+
+</Accordion>
+
+<Accordion title="Use Regex for Patterns">
+
+Match dynamic content:
+
+```http
+# Match JSON with any ID value
+//# body matches_regex .*"id":\s*[0-9]+.*
+
+# Match UUID pattern
+//# body matches_regex .*"uuid":\s*"[a-f0-9-]+".*
+```
+
+</Accordion>
+
+<Accordion title="Debug Response Body">
+
+Temporarily remove the assertion to see actual response:
+
+```http
+GET https://api.example.com/test
+
+# Comment out to see what you're actually getting
+# //# body == "expected"
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+### contains_failed
+
+**Error Message:**
+```
+[Fail] in tests/api.http:2 Expected body to contain "success", got "error: validation failed"
+```
+
+**Cause:** The expected substring is not found in the response.
+
+**Source:** assertion_checker.zig:133
+
+**Solution:**
+
+```http
+# Check spelling and case
+//# body contains "success"     # Case-sensitive
+
+# Check multiple substrings
+//# body contains "user"
+//# body contains "email"
+
+# Use regex for case-insensitive
+//# body matches_regex (?i)success
+```
+
+---
+
+### not_contains_failed
+
+**Error Message:**
+```
+[Fail] in tests/api.http:3 Expected body to NOT contain "error", got "error: failed"
+```
+
+**Cause:** The substring that should be absent is found in the response.
+
+**Source:** assertion_checker.zig:134
+
+**Solution:**
+
+```http
+# Verify the response doesn't contain error messages
+//# body not_contains "error"
+//# body not_contains "failed"
+//# body not_contains "exception"
+```
+
+---
+
+### invalid_assertion_key
+
+**Error Message:**
+```
+[Fail] in tests/api.http:1 Invalid assertion key: "invalid_key"
+```
+
+**Cause:** The assertion key is not one of the supported types: `status`, `body`, or `header["..."]`.
+
+**Source:** assertion_checker.zig:135, 211, 234, 256, 278, 300, 322
+
+**Solution:**
+
+```http
+# Incorrect
+//# response == "value"
+//# code == 200
+//# headers["content-type"] == "json"
+
+# Correct
+//# status == 200
+//# body == "value"
+//# header["content-type"] == "application/json"
+```
+
+**Valid keys:**
+- `status`
+- `body`
+- `header["header-name"]` (note the double quotes)
+
+---
+
+### status_format_error
+
+**Error Message:**
+```
+[Fail] in tests/api.http:1 Status format error for assertion "status"
+```
+
+**Cause:** The status assertion value cannot be parsed as an integer.
+
+**Source:** assertion_checker.zig:136, 166-177
+
+**Solution:**
+
+```http
+# Incorrect
+//# status == OK
+//# status == success
+
+# Correct
+//# status == 200
+//# status == 404
+```
+
+<Note>
+Status codes must be numeric values (e.g., 200, 404, 500).
+</Note>
+
+---
+
+## Connection Issues
+
+Connection errors occur when HTTPSpec cannot reach the target server.
+
+### Failed to Execute Request
+
+**Error Message:**
+```
+Failed to execute request in file tests/api.http: <error>
+```
+
+**Common Causes:**
+
+<AccordionGroup>
+
+<Accordion title="Server Not Running">
+
+**Symptoms:** Connection refused, connection timeout
+
+**Solution:**
+
+1. Verify the server is running
+2. Check the correct port
+3. Ensure no firewall blocking
+
+```bash
+# Check if server is listening
+netstat -an | grep 8080
+
+# Test with curl
+curl http://localhost:8080/health
+```
+
+</Accordion>
+
+<Accordion title="Incorrect URL">
+
+**Symptoms:** DNS resolution errors, 404 responses
+
+**Solution:**
+
+```http
+# Check protocol (http vs https)
+GET https://api.example.com/users  # Correct
+GET http://api.example.com/users   # Wrong protocol
+
+# Check domain spelling
+GET https://api.exmaple.com/users  # Typo
+GET https://api.example.com/users  # Correct
+```
+
+</Accordion>
+
+<Accordion title="SSL/TLS Issues">
+
+**Symptoms:** Certificate verification errors
+
+**Solution:**
+
+1. Check certificate validity
+2. Ensure correct hostname
+3. Verify system CA certificates are up to date
+
+</Accordion>
+
+<Accordion title="Network Connectivity">
+
+**Symptoms:** Timeout errors
+
+**Solution:**
+
+```bash
+# Test basic connectivity
+ping api.example.com
+
+# Test DNS resolution
+nslookup api.example.com
+
+# Test port connectivity
+telnet api.example.com 443
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## Invalid File Format
+
+### File Not Found
+
+**Error Message:**
+```
+Failed to parse file tests/missing.http: FileNotFound
+```
+
+**Solution:**
+
+1. Verify file path is correct
+2. Check file exists
+3. Ensure proper file extension (`.http` or `.httpspec`)
+
+```bash
+# List test files
+ls tests/*.http
+
+# Run specific file
+httpspec tests/users.http
+
+# Run all files in directory
+httpspec tests/
+```
+
+---
+
+### Empty File
+
+**Cause:** The `.http` file contains no valid requests.
+
+**Solution:**
+
+Ensure file has at least one valid HTTP request:
+
+```http
+# Minimum valid file
+GET https://api.example.com
+```
+
+---
+
+## Thread Pool Configuration
+
+### Too Many Threads
+
+**Symptoms:**
+- Excessive memory usage
+- Server overload
+- Rate limit errors
+
+**Solution:**
+
+Reduce `HTTP_THREAD_COUNT`:
+
+```bash
+# Too aggressive
+export HTTP_THREAD_COUNT=100
+
+# More reasonable
+export HTTP_THREAD_COUNT=8
+```
+
+See [Environment Variables](/reference/environment-variables#http_thread_count) for guidance.
+
+---
+
+### Thread Allocation Errors
+
+**Error Message:**
+```
+Error initializing thread pool
+```
+
+**Cause:** System unable to allocate requested threads.
+
+**Solution:**
+
+1. Reduce thread count
+2. Check system resource limits
+3. Close other applications
+
+```bash
+# Check thread limit on Unix systems
+ulimit -u
+
+# Increase if needed
+ulimit -u 2048
+```
+
+---
+
+## Debugging Tips
+
+### Enable Detailed Error Output
+
+HTTPSpec outputs errors to stderr. Capture for debugging:
+
+```bash
+# Capture stderr
+httpspec tests/ 2> errors.log
+
+# View both stdout and stderr
+httpspec tests/ 2>&1 | tee output.log
+```
+
+---
+
+### Isolate Failing Tests
+
+Run one test file at a time:
+
+```bash
+# Run single file
+httpspec tests/users.http
+
+# Or specific subset
+httpspec tests/auth/*.http
+```
+
+---
+
+### Simplify Assertions
+
+Temporarily remove complex assertions:
+
+```http
+GET https://api.example.com/users
+
+# Start simple
+//# status == 200
+
+# Then add more specific checks
+# //# body contains "users"
+# //# header["content-type"] == "application/json"
+```
+
+---
+
+### Use External Tools
+
+Test requests independently:
+
+```bash
+# Test with curl
+curl -v https://api.example.com/users
+
+# Test with httpie
+http https://api.example.com/users
+
+# Check DNS
+dig api.example.com
+```
+
+---
+
+### Check Memory Leaks
+
+HTTPSpec uses a debug allocator in development (main.zig:11-13):
+
+```zig
+var debug = std.heap.DebugAllocator(.{}){};
+defer _ = debug.deinit();  // Will report leaks
+```
+
+If you encounter memory-related issues, consider:
+
+1. Reducing test file size
+2. Limiting parallel execution
+3. Checking for large response bodies
+
+---
+
+## Reading Error Messages
+
+### Error Message Format
+
+HTTPSpec error messages include:
+
+1. **Error type:** The specific error that occurred
+2. **File location:** Which test file failed (if applicable)
+3. **Details:** Expected vs actual values
+
+**Example breakdown:**
+```
+[Fail] in tests/api.http:3 Expected status 200, got 404
+  │           │            │     │              │      │
+  │           │            │     │              │      └─ Actual value
+  │           │            │     │              └─ Comparison
+  │           │            │     └─ Expected value
+  │           │            └─ Assertion number (3rd assertion)
+  │           └─ File path
+  └─ Failure indicator
+```
+
+---
+
+### Test Summary Report
+
+After all tests run, HTTPSpec reports:
+
+```
+All X tests ran successfully!
+
+Pass: X
+Fail: X
+Invalid: X
+```
+
+**Status meanings:**
+
+- **Pass:** Test file ran with all assertions passing
+- **Fail:** Test file ran but one or more assertions failed
+- **Invalid:** Test file could not be parsed or executed
+
+**Source:** test_reporter.zig:20-32
+
+---
+
+## Common Patterns
+
+### Intermittent Failures
+
+**Causes:**
+- Network instability
+- Server load
+- Race conditions in parallel execution
+- Non-deterministic API responses
+
+**Solutions:**
+
+```bash
+# Run sequentially
+HTTP_THREAD_COUNT=1 httpspec tests/
+
+# Run multiple times to identify flaky tests
+for i in {1..5}; do httpspec tests/; done
+```
+
+---
+
+### Authentication Issues
+
+**Symptoms:** 401 Unauthorized, 403 Forbidden
+
+**Solution:**
+
+```http
+# Ensure auth headers are present
+GET https://api.example.com/protected
+Authorization: Bearer YOUR_TOKEN_HERE
+
+//# status == 200
+//# status != 401
+```
+
+---
+
+### CORS Errors
+
+**Note:** HTTPSpec is a CLI tool and doesn't encounter browser CORS restrictions. If you see CORS-related content in responses, it indicates server-side issues.
+
+---
+
+## Getting Help
+
+### Check Documentation
+
+- [Assertion Operators](/reference/assertion-operators) - Complete operator reference
+- [Environment Variables](/reference/environment-variables) - Configuration options
+- [Quick Start](/quickstart) - Getting started guide
+
+### Report Issues
+
+If you encounter a bug:
+
+1. Create a minimal reproduction case
+2. Include HTTPSpec version
+3. Provide error messages
+4. Share relevant `.http` file (sanitized)
+
+### Community Support
+
+Reach out through:
+- GitHub Issues
+- Project documentation
+- Community forums
+
+---
+
+## See Also
+
+- [Assertion Operators](/reference/assertion-operators) - Detailed operator documentation
+- [Environment Variables](/reference/environment-variables) - Configuration reference
+- [HTTP File Format](/format/overview) - File syntax guide

@@ -1,0 +1,381 @@
+---
+title: "Environment Variables"
+description: "Configuration options available through environment variables in HTTPSpec"
+---
+
+## Overview
+
+HTTPSpec supports configuration through environment variables to control test execution behavior. These variables allow you to customize parallel execution, timeouts, and other runtime parameters.
+
+## Available Variables
+
+### HTTP_THREAD_COUNT
+
+Controls the number of concurrent threads used for parallel test execution.
+
+**Type:** Integer (unsigned)
+
+**Default:** `1`
+
+**Valid Range:** 1 to system-dependent maximum
+
+**Source:** main.zig:26
+
+```zig
+const threads = std.process.parseEnvVarInt("HTTP_THREAD_COUNT", usize, 10) catch 1;
+```
+
+<Note>
+The default value of `1` means tests run sequentially. Increase this value to run multiple test files in parallel.
+</Note>
+
+#### Description
+
+HTTPSpec uses a thread pool to execute test files concurrently. Each test file is processed by a single thread, and the `HTTP_THREAD_COUNT` variable determines how many test files can run simultaneously.
+
+**How it works:**
+
+1. HTTPSpec discovers all `.http` and `.httpspec` files to run
+2. A thread pool is initialized with `HTTP_THREAD_COUNT` worker threads (main.zig:57-61)
+3. Each test file is dispatched to an available thread
+4. Tests within a single file always run sequentially
+5. The main thread waits for all tests to complete before reporting results
+
+```zig
+var pool: std.Thread.Pool = undefined;
+try pool.init(.{
+    .allocator = allocator,
+    .n_jobs = threads,
+});
+defer pool.deinit();
+```
+
+#### Usage Examples
+
+**Run tests sequentially (default):**
+
+```bash
+httpspec tests/
+```
+
+**Run up to 4 test files in parallel:**
+
+```bash
+export HTTP_THREAD_COUNT=4
+httpspec tests/
+```
+
+**One-time parallel execution:**
+
+```bash
+HTTP_THREAD_COUNT=8 httpspec tests/
+```
+
+**Windows (PowerShell):**
+
+```powershell
+$env:HTTP_THREAD_COUNT=4
+httpspec tests/
+```
+
+**Windows (Command Prompt):**
+
+```cmd
+set HTTP_THREAD_COUNT=4
+httpspec tests/
+```
+
+#### Performance Considerations
+
+<Accordion title="Choosing the Right Thread Count">
+
+**Factors to consider:**
+
+1. **Number of test files:** More threads than test files provides no benefit
+2. **CPU cores:** Setting threads higher than CPU core count may not improve performance
+3. **I/O vs CPU bound:** HTTP tests are typically I/O bound (waiting for network), so you can use more threads than CPU cores
+4. **Server capacity:** Too many parallel requests may overwhelm the test server
+5. **Rate limits:** Some APIs have rate limits that parallel execution might trigger
+
+**Recommended values:**
+
+- **Small test suite (1-10 files):** `4-8` threads
+- **Medium test suite (10-50 files):** `8-16` threads
+- **Large test suite (50+ files):** `16-32` threads
+- **Local development:** Number of CPU cores or less
+- **CI/CD pipelines:** `4-8` threads (to avoid overwhelming shared resources)
+
+</Accordion>
+
+<Warning>
+Setting `HTTP_THREAD_COUNT` too high may:
+- Overwhelm the target API server
+- Trigger rate limiting
+- Cause test failures due to resource exhaustion
+- Increase memory usage
+</Warning>
+
+#### Thread Safety
+
+The test reporter uses mutex locks to safely update test statistics from multiple threads (test_reporter.zig:8, 35-53):
+
+```zig
+pub const BasicReporter = struct {
+    test_count: usize,
+    test_pass: usize,
+    test_fail: usize,
+    test_invalid: usize,
+    m: std.Thread.Mutex,  // Protects counters
+    
+    pub fn incTestCount(self: *BasicReporter) void {
+        self.m.lock();
+        defer self.m.unlock();
+        self.test_count += 1;
+    }
+    // ... similar for incTestPass, incTestFail, incTestInvalid
+};
+```
+
+#### Error Handling
+
+**Invalid Values:**
+
+If `HTTP_THREAD_COUNT` contains an invalid integer value, HTTPSpec falls back to the default of `1`:
+
+```bash
+HTTP_THREAD_COUNT=invalid httpspec tests/  # Uses default: 1
+HTTP_THREAD_COUNT=-5 httpspec tests/       # Uses default: 1
+HTTP_THREAD_COUNT=0 httpspec tests/        # Uses default: 1
+```
+
+The parsing uses `std.process.parseEnvVarInt()` which catches all parsing errors and returns the default value.
+
+**System Limits:**
+
+The actual thread count may be limited by:
+- Operating system thread limits
+- Available memory
+- File descriptor limits (each HTTP connection uses a file descriptor)
+
+---
+
+## Memory Management
+
+### Arena Allocators Per Test
+
+Each test file execution uses an isolated arena allocator (main.zig:114-116):
+
+```zig
+fn runTest(
+    base_allocator: std.mem.Allocator,
+    reporter: *TestReporter.BasicReporter,
+    path: []const u8,
+    stderr: *std.io.Writer,
+) void {
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit(); // Automatically frees all test allocations
+    const allocator = arena.allocator();
+    // ... test execution ...
+}
+```
+
+**Benefits:**
+
+- Memory isolation between test files
+- Automatic cleanup after each test
+- No memory leaks from individual tests
+- Simplified memory management
+
+**Implications for parallel execution:**
+
+- Each thread manages its own arena
+- Memory usage scales with thread count
+- Peak memory = (average test memory) × (thread count)
+
+<Note>
+The main program uses a `DebugAllocator` to detect memory leaks during development (main.zig:11-13).
+</Note>
+
+---
+
+## Configuration Examples
+
+### Development Environment
+
+```bash
+# .envrc (for direnv)
+export HTTP_THREAD_COUNT=4
+```
+
+### CI/CD Pipeline
+
+**GitHub Actions:**
+
+```yaml
+- name: Run HTTPSpec Tests
+  env:
+    HTTP_THREAD_COUNT: 8
+  run: httpspec tests/
+```
+
+**GitLab CI:**
+
+```yaml
+test:
+  script:
+    - export HTTP_THREAD_COUNT=8
+    - httpspec tests/
+```
+
+**Jenkins:**
+
+```groovy
+environment {
+    HTTP_THREAD_COUNT = '8'
+}
+steps {
+    sh 'httpspec tests/'
+}
+```
+
+### Docker
+
+**Dockerfile:**
+
+```dockerfile
+ENV HTTP_THREAD_COUNT=4
+CMD ["httpspec", "tests/"]
+```
+
+**Docker Compose:**
+
+```yaml
+services:
+  httpspec:
+    image: httpspec:latest
+    environment:
+      - HTTP_THREAD_COUNT=4
+    command: httpspec tests/
+```
+
+---
+
+## Future Configuration Options
+
+<Note>
+The following environment variables are not currently implemented but may be added in future versions:
+</Note>
+
+### Potential Future Variables
+
+- `HTTP_TIMEOUT`: Request timeout in seconds
+- `HTTP_RETRY_COUNT`: Number of retries for failed requests
+- `HTTP_VERBOSE`: Enable verbose logging
+- `HTTP_FOLLOW_REDIRECTS`: Enable/disable redirect following
+- `HTTP_MAX_REDIRECTS`: Maximum number of redirects to follow
+- `HTTP_CONNECT_TIMEOUT`: Connection timeout in seconds
+- `HTTP_USER_AGENT`: Custom User-Agent header
+
+---
+
+## Best Practices
+
+### 1. Set Appropriate Thread Count
+
+```bash
+# Good: Balanced for I/O-bound HTTP tests
+export HTTP_THREAD_COUNT=8
+
+# Avoid: Too many threads for small test suite
+export HTTP_THREAD_COUNT=100  # Only 5 test files
+```
+
+### 2. Document Team Standards
+
+Include a `.envrc` or `.env.example` file in your project:
+
+```bash
+# .env.example
+# HTTPSpec Configuration
+# Recommended: 4-8 for development, 8-16 for CI
+HTTP_THREAD_COUNT=4
+```
+
+### 3. CI/CD Optimization
+
+```yaml
+# Adjust based on runner specs
+# GitHub Actions: 2-core runners -> 4 threads
+# Self-hosted: 8-core runners -> 16 threads
+env:
+  HTTP_THREAD_COUNT: 4
+```
+
+### 4. Load Testing Considerations
+
+```bash
+# If testing against production, limit parallelism
+export HTTP_THREAD_COUNT=1
+
+# For dedicated test environments, increase
+export HTTP_THREAD_COUNT=16
+```
+
+### 5. Local vs CI Configuration
+
+```bash
+# Local development (fast feedback)
+export HTTP_THREAD_COUNT=4
+
+# CI/CD (thorough testing, resource-aware)
+export HTTP_THREAD_COUNT=8
+```
+
+---
+
+## Debugging
+
+### Check Current Configuration
+
+```bash
+# Unix/Linux/macOS
+echo $HTTP_THREAD_COUNT
+
+# Windows PowerShell
+$env:HTTP_THREAD_COUNT
+
+# Windows Command Prompt
+echo %HTTP_THREAD_COUNT%
+```
+
+### Verify Thread Usage
+
+HTTPSpec doesn't currently log the thread count, but you can verify behavior:
+
+```bash
+# Run with different thread counts and measure execution time
+time HTTP_THREAD_COUNT=1 httpspec tests/
+time HTTP_THREAD_COUNT=4 httpspec tests/
+time HTTP_THREAD_COUNT=8 httpspec tests/
+```
+
+### Unset Variable
+
+```bash
+# Unix/Linux/macOS
+unset HTTP_THREAD_COUNT
+
+# Windows PowerShell
+Remove-Item Env:HTTP_THREAD_COUNT
+
+# Windows Command Prompt
+set HTTP_THREAD_COUNT=
+```
+
+---
+
+## See Also
+
+- [Troubleshooting](/reference/troubleshooting) - Debug test execution issues
+- [Quick Start](/quickstart) - Getting started guide
+- [Installation](/installation) - Build and install HTTPSpec

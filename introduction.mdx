@@ -1,0 +1,114 @@
+---
+title: Introduction
+description: HTTPSpec is a CLI tool for running HTTP files as integration tests with powerful assertions
+---
+
+HTTPSpec is a command-line tool that extends standard `.http` files with assertions, enabling you to run HTTP requests as integration tests. It parses `.http` or `.httpspec` files, executes requests sequentially, and validates responses against user-defined assertions.
+
+## What is HTTPSpec?
+
+HTTPSpec builds upon the familiar HTTP file format by adding assertion capabilities. Instead of just making HTTP requests, you can now:
+
+- **Define test expectations** using simple assertion syntax
+- **Run requests in sequence** to model real-world API workflows
+- **Validate responses** against status codes, headers, and body content
+- **Execute tests in parallel** using configurable thread pools
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install HTTPSpec for your platform and add it to your PATH
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Create and run your first HTTPSpec test in minutes
+  </Card>
+  <Card title="File Format" icon="file-code" href="/format/overview">
+    Learn the HTTPSpec assertion syntax and file structure
+  </Card>
+  <Card title="Examples" icon="code" href="/examples/basic-tests">
+    Real-world examples and common testing patterns
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Sequential Request Execution
+
+HTTPSpec executes requests in the order they appear in your file. This allows you to model complex scenarios where later requests depend on earlier ones (e.g., create a user, then create an order for that user).
+
+### Powerful Assertions
+
+Validate every aspect of HTTP responses:
+
+- **Status codes**: `status == 200`, `status != 404`
+- **Headers**: `header["content-type"] == "application/json"`
+- **Body content**: `body contains "expected"`, `body == "exact match"`
+- **Regex matching**: `body matches_regex "^success.*"`
+
+### Parallel Test Execution
+
+Run multiple test files in parallel using thread pools. Configure the number of concurrent jobs with the `HTTP_THREAD_COUNT` environment variable:
+
+```bash
+HTTP_THREAD_COUNT=4 httpspec ./tests/
+```
+
+### Simple File Format
+
+HTTPSpec uses the standard `.http` file format with minimal syntax additions:
+
+```http
+### Get user by ID
+GET https://api.example.com/users/123
+Authorization: Bearer {{token}}
+Accept: application/json
+
+//# status == 200
+//# header["content-type"] == "application/json"
+//# body contains "expected-user-name"
+```
+
+## Why HTTPSpec?
+
+<Note>
+  HTTPSpec is designed for **integration testing** - validating that your HTTP APIs work correctly in real-world scenarios.
+</Note>
+
+Compared to other testing tools:
+
+| Feature | HTTPSpec | Postman | curl + bash | REST Client |
+|---------|----------|---------|-------------|-------------|
+| File-based tests | ✅ | ❌ | ✅ | ✅ |
+| Version control friendly | ✅ | ⚠️ (JSON) | ✅ | ✅ |
+| Built-in assertions | ✅ | ✅ | ❌ | ❌ |
+| Sequential execution | ✅ | ✅ | ⚠️ (manual) | ❌ |
+| Parallel test runner | ✅ | ✅ | ❌ | ❌ |
+| CLI-first | ✅ | ❌ | ✅ | ❌ |
+| No dependencies | ✅ | ❌ | ⚠️ (jq) | ❌ |
+
+### Use Cases
+
+- **API integration testing** in CI/CD pipelines
+- **Smoke tests** for deployed services
+- **Regression testing** for API contracts
+- **Local development** validation
+- **Documentation** with executable examples
+
+## How It Works
+
+HTTPSpec processes your test files in three steps:
+
+1. **Parse**: Reads `.http` or `.httpspec` files and extracts requests with assertions
+2. **Execute**: Makes HTTP requests in sequence within each file
+3. **Validate**: Checks responses against assertions and reports failures
+
+When an assertion fails, HTTPSpec stops executing further requests in that file and reports the failure. This fail-fast behavior ensures you catch issues early in request sequences.
+
+## Getting Started
+
+Ready to start testing? Head to the [Installation](/installation) guide to set up HTTPSpec, or jump straight to the [Quick Start](/quickstart) to create your first test.
+
+<CardGroup cols={1}>
+  <Card title="Next: Install HTTPSpec" icon="arrow-right" href="/installation">
+    Download and install HTTPSpec for your platform
+  </Card>
+</CardGroup>

@@ -1,0 +1,96 @@
+---
+title: File Format Overview
+description: Learn the basics of HTTPSpec's file format for HTTP testing with assertions
+---
+
+HTTPSpec extends the familiar `.http` file format with assertion capabilities, enabling you to write executable HTTP requests that validate API responses automatically.
+
+## File Extensions
+
+HTTPSpec supports two file extensions:
+
+- **`.httpspec`** - The recommended extension for HTTPSpec files
+- **`.http`** - Standard HTTP file format, also supported for compatibility
+
+Both extensions work identically in HTTPSpec. The tool will automatically discover and execute all `.http` and `.httpspec` files when you run it against a directory.
+
+## Basic Structure
+
+Each HTTPSpec file contains one or more **request blocks**. A request block consists of:
+
+1. **Optional name** - A comment starting with `###` to describe the test
+2. **Request line** - HTTP method, URL, and optional HTTP version
+3. **Headers** - Key-value pairs for HTTP headers
+4. **Request body** - Optional body content (JSON, XML, etc.)
+5. **Assertions** - Lines starting with `//#` that validate the response
+
+<CodeGroup>
+
+```http Basic Structure
+### Optional test name
+GET https://api.example.com/endpoint
+Header-Name: Header-Value
+
+Optional request body
+
+//# status == 200
+//# body contains "expected content"
+```
+
+```http Complete Example
+### Get user by ID
+GET https://jsonplaceholder.typicode.com/users/1
+Accept: application/json
+
+//# status == 200
+//# body contains "Leanne Graham"
+```
+
+</CodeGroup>
+
+## Multiple Requests
+
+You can include multiple request blocks in a single file, separated by blank lines or test names. HTTPSpec executes them sequentially, which is useful for:
+
+- Setup and teardown operations
+- Testing request sequences
+- Grouping related API tests
+
+```http Multiple Requests
+### Create a user
+POST https://api.example.com/users
+Content-Type: application/json
+
+{
+  "name": "Alice"
+}
+
+//# status == 201
+//# body contains "Alice"
+
+### Get the user
+GET https://api.example.com/users/1
+
+//# status == 200
+```
+
+<Note>
+Requests are executed in the order they appear in the file.
+</Note>
+
+## Learn More
+
+<CardGroup cols={2}>
+  <Card title="Request Format" icon="arrow-right" href="/format/requests">
+    Detailed syntax for HTTP requests, headers, and bodies
+  </Card>
+  <Card title="Assertions" icon="check" href="/format/assertions">
+    How to write assertions to validate responses
+  </Card>
+  <Card title="Variables" icon="brackets-curly" href="/format/variables">
+    Use variables for dynamic values in requests
+  </Card>
+  <Card title="Assertion Types" icon="list-check" href="/guides/assertion-types">
+    All available assertion operators and examples
+  </Card>
+</CardGroup>

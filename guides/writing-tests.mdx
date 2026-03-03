@@ -1,0 +1,308 @@
+---
+title: "Writing Tests"
+description: "Best practices for writing HTTPSpec test files with assertions"
+---
+
+HTTPSpec allows you to write integration tests for HTTP APIs using familiar `.http` file syntax enhanced with assertions. This guide covers best practices for organizing and structuring your test files.
+
+## File Extensions
+
+HTTPSpec supports two file extensions:
+- `.http` - Standard HTTP file format
+- `.httpspec` - HTTPSpec-specific format
+
+Both extensions work identically. Use `.httpspec` to make it clear that the file contains assertions.
+
+## Basic Test Structure
+
+Each test file contains one or more HTTP requests with optional assertions:
+
+```http
+### Request name (optional)
+METHOD URL [HTTP_VERSION]
+Header-Name: Header-Value
+
+Request body (optional)
+
+//# assertion_key assertion_type expected_value
+```
+
+### Example
+
+```http
+### Create a new user
+POST https://api.example.com/users
+Content-Type: application/json
+Authorization: Bearer ABC123
+
+{
+  "name": "John Doe",
+  "email": "john@example.com"
+}
+
+//# status == 201
+//# header["content-type"] contains "application/json"
+//# body contains "John Doe"
+```
+
+## Organizing Test Files
+
+### Directory Structure
+
+Organize your test files in a logical directory structure:
+
+```
+test_files/
+├── auth/
+│   ├── login.http
+│   └── logout.http
+├── users/
+│   ├── create_user.http
+│   ├── get_user.http
+│   └── update_user.http
+└── orders/
+    ├── create_order.http
+    └── list_orders.http
+```
+
+Run all tests in a directory:
+
+```bash
+httpspec ./test_files/
+```
+
+### File Naming Conventions
+
+<Tip>
+Use descriptive names that indicate what the test validates:
+- `create_user_success.http` - Tests successful user creation
+- `get_user_not_found.http` - Tests 404 response
+- `auth_invalid_token.http` - Tests authentication failure
+</Tip>
+
+## Naming Tests
+
+Use the `###` comment syntax to name individual requests within a file:
+
+```http
+### Get user by ID
+GET https://api.example.com/users/123
+
+//# status == 200
+
+### Get non-existent user
+GET https://api.example.com/users/999999
+
+//# status == 404
+```
+
+Test names appear in error messages, making failures easier to debug.
+
+## HTTP Methods and Headers
+
+HTTPSpec supports all standard HTTP methods:
+
+```http
+### GET request
+GET https://api.example.com/users
+Accept: application/json
+
+### POST request
+POST https://api.example.com/users
+Content-Type: application/json
+
+{"name": "Alice"}
+
+### PUT request
+PUT https://api.example.com/users/123
+Content-Type: application/json
+
+{"name": "Alice Updated"}
+
+### DELETE request
+DELETE https://api.example.com/users/123
+Authorization: Bearer ABC123
+```
+
+## HTTP Versions
+
+Specify HTTP version after the URL (defaults to HTTP/1.1):
+
+```http
+GET https://api.example.com HTTP/1.0
+GET https://api.example.com HTTP/1.1
+GET https://api.example.com HTTP/2
+GET https://api.example.com HTTP/3
+```
+
+## Request Bodies
+
+Add a blank line after headers, then include the request body:
+
+```http
+POST https://api.example.com/users
+Content-Type: application/json
+
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "age": 30
+}
+```
+
+## Comments
+
+Use `#` or `//` for regular comments (not assertions):
+
+```http
+# This is a comment
+// This is also a comment
+
+### Create user test
+POST https://api.example.com/users
+Content-Type: application/json
+
+// Request body
+{"name": "Alice"}
+
+//# status == 201  # This is an assertion, not a comment!
+```
+
+<Warning>
+Assertions must start with `//#` (double slash, hash). Lines starting with `//` alone are treated as comments and ignored.
+</Warning>
+
+## Real-World Example
+
+Here's a complete example from the HTTPSpec test suite:
+
+```http
+### Make a simple 200 request to HTTP Bin
+GET http://httpbin.org/status/200
+Content-Type: application/json
+
+### Make a simple 404 request to HTTP Bin
+GET http://httpbin.org/status/404
+Content-Type: application/json
+//# status == 403
+```
+
+<Note>
+In this example, the second request intentionally asserts `status == 403` but receives a 404 response. This demonstrates how HTTPSpec stops execution on the first assertion failure.
+</Note>
+
+## Best Practices
+
+### 1. One Concern Per File
+
+Keep related sequential requests in the same file:
+
+```http
+### Create user
+POST https://api.example.com/users
+Content-Type: application/json
+
+{"name": "Alice"}
+
+//# status == 201
+
+### Verify user was created
+GET https://api.example.com/users/123
+
+//# status == 200
+//# body contains "Alice"
+```
+
+### 2. Use Descriptive Test Names
+
+Make failures easy to understand:
+
+```http
+### Successful login with valid credentials
+POST https://api.example.com/auth/login
+
+### Login fails with invalid password
+POST https://api.example.com/auth/login
+
+### Login fails with non-existent user
+POST https://api.example.com/auth/login
+```
+
+### 3. Add Meaningful Assertions
+
+Don't just check status codes - validate the actual response:
+
+```http
+GET https://api.example.com/users/123
+
+//# status == 200
+//# header["content-type"] == "application/json"
+//# body contains "email"
+//# body contains "name"
+```
+
+### 4. Keep Tests Focused
+
+Test one scenario per file or request block:
+
+<CodeGroup>
+```http Good: Focused test
+### Test successful user creation
+POST https://api.example.com/users
+Content-Type: application/json
+
+{"name": "Alice"}
+
+//# status == 201
+//# body contains "Alice"
+```
+
+```http Avoid: Too many scenarios
+### Test user creation, update, and deletion
+POST https://api.example.com/users
+# ...
+PUT https://api.example.com/users/123
+# ...
+DELETE https://api.example.com/users/123
+# ...
+```
+</CodeGroup>
+
+### 5. Order Dependencies Carefully
+
+Since requests run sequentially within a file, order them logically:
+
+```http
+### Setup: Create test user
+POST https://api.example.com/users
+Content-Type: application/json
+
+{"name": "Test User"}
+
+//# status == 201
+
+### Test: Fetch the created user
+GET https://api.example.com/users/123
+
+//# status == 200
+
+### Cleanup: Delete the test user
+DELETE https://api.example.com/users/123
+
+//# status == 204
+```
+
+<Warning>
+If any assertion fails, subsequent requests in the file will not execute. Design your tests with this behavior in mind.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Assertion Types" icon="check" href="/guides/assertion-types">
+    Learn about all available assertion types and operators
+  </Card>
+  <Card title="Sequential Testing" icon="list-ol" href="/guides/sequential-testing">
+    Understand how requests execute in sequence
+  </Card>
+</CardGroup>

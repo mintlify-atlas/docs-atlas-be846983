@@ -1,0 +1,433 @@
+---
+title: "Assertion Operators"
+description: "Complete reference for all assertion operators supported in HTTPSpec test files"
+---
+
+## Overview
+
+HTTPSpec supports a comprehensive set of assertion operators to validate HTTP responses. Assertions are defined using the `//#` syntax in your `.http` or `.httpspec` files.
+
+## Syntax
+
+```http
+//# <key> <operator> <value>
+```
+
+- **key**: The response property to check (`status`, `body`, or `header["name"]`)
+- **operator**: The comparison operator (see table below)
+- **value**: The expected value to compare against
+
+## Supported Operators
+
+| Operator | Alias | Description | Type Support |
+|----------|-------|-------------|-------------|
+| `==` | `equal` | Exact equality check | status, body, headers |
+| `!=` | `not_equal` | Not equal check | status, body, headers |
+| `contains` | - | Checks if value contains substring | status, body, headers |
+| `not_contains` | - | Checks if value does not contain substring | status, body, headers |
+| `starts_with` | - | Checks if value starts with string | status, body, headers |
+| `ends_with` | - | Checks if value ends with string | status, body, headers |
+| `matches_regex` | - | Checks if value matches regex pattern | status, body, headers |
+| `not_matches_regex` | - | Checks if value does not match regex | status, body, headers |
+
+<Note>
+All operator names are case-insensitive. For example, `EQUAL`, `Equal`, and `equal` are all valid.
+</Note>
+
+## Operator Details
+
+### Equal (`==` or `equal`)
+
+Performs exact equality comparison.
+
+**Status Code:**
+```http
+//# status == 200
+//# status equal 404
+```
+
+**Response Body:**
+```http
+//# body == "Hello, World!"
+//# body equal "{\"success\":true}"
+```
+
+**Headers:**
+```http
+//# header["content-type"] == "application/json"
+//# header["authorization"] equal "Bearer token123"
+```
+
+<Note>
+Header assertions use case-insensitive comparison for the expected value (source: assertion_checker.zig:207).
+</Note>
+
+---
+
+### Not Equal (`!=` or `not_equal`)
+
+Verifies that values are not equal.
+
+**Status Code:**
+```http
+//# status != 500
+//# status not_equal 404
+```
+
+**Response Body:**
+```http
+//# body != "Error occurred"
+```
+
+**Headers:**
+```http
+//# header["content-type"] != "text/html"
+```
+
+---
+
+### Contains (`contains`)
+
+Checks if the response value contains a specific substring.
+
+**Status Code:**
+```http
+//# status contains 20  # Matches 200, 201, etc.
+```
+
+**Response Body:**
+```http
+//# body contains "success"
+//# body contains "user_id"
+```
+
+**Headers:**
+```http
+//# header["content-type"] contains "json"
+```
+
+<Accordion title="Implementation Details">
+The contains operator uses `std.mem.indexOf()` for substring matching (source: assertion_checker.zig:242-253).
+</Accordion>
+
+---
+
+### Not Contains (`not_contains`)
+
+Verifies that the response value does not contain a specific substring.
+
+**Status Code:**
+```http
+//# status not_contains 40  # Fails for 400, 401, 404, etc.
+```
+
+**Response Body:**
+```http
+//# body not_contains "error"
+//# body not_contains "deprecated"
+```
+
+**Headers:**
+```http
+//# header["content-type"] not_contains "xml"
+```
+
+---
+
+### Starts With (`starts_with`)
+
+Checks if the response value starts with a specific prefix.
+
+**Status Code:**
+```http
+//# status starts_with 2  # Matches 2xx status codes
+```
+
+**Response Body:**
+```http
+//# body starts_with "Hello"
+//# body starts_with "{"
+```
+
+**Headers:**
+```http
+//# header["content-type"] starts_with "application"
+```
+
+<Note>
+This operator is defined in the parser (parser.zig:25) and tested in the test suite (assertion_checker.zig:507-560).
+</Note>
+
+---
+
+### Ends With (`ends_with`)
+
+Checks if the response value ends with a specific suffix.
+
+**Status Code:**
+```http
+//# status ends_with 4  # Matches 204, 404, etc.
+```
+
+**Response Body:**
+```http
+//# body ends_with "!"
+//# body ends_with "}\n"
+```
+
+**Headers:**
+```http
+//# header["content-type"] ends_with "json"
+```
+
+---
+
+### Matches Regex (`matches_regex`)
+
+Validates that the response value matches a regular expression pattern.
+
+**Status Code:**
+```http
+//# status matches_regex ^2.*  # All 2xx codes
+//# status matches_regex ^[23]0[0-9]$  # 200-209 or 300-309
+```
+
+**Response Body:**
+```http
+//# body matches_regex .*success.*
+//# body matches_regex ^\{.*\}$  # JSON object
+//# body matches_regex "id":\s*"[a-f0-9-]+"  # UUID pattern
+```
+
+**Headers:**
+```http
+//# header["content-type"] matches_regex application/.*
+```
+
+<Accordion title="Regex Implementation">
+HTTPSpec uses the `regex` library for pattern matching. The regex compilation and matching occurs in `matchesRegex()` function (assertion_checker.zig:149-157).
+
+```zig
+fn matchesRegex(text: []const u8, pattern: []const u8) bool {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var compiled_regex = regex.Regex.compile(allocator, pattern) catch return false;
+    defer compiled_regex.deinit();
+    return compiled_regex.match(text) catch return false;
+}
+```
+</Accordion>
+
+---
+
+### Not Matches Regex (`not_matches_regex`)
+
+Verifies that the response value does not match a regular expression pattern.
+
+**Status Code:**
+```http
+//# status not_matches_regex ^[45].*  # Not 4xx or 5xx
+```
+
+**Response Body:**
+```http
+//# body not_matches_regex .*error.*
+//# body not_matches_regex <html>.*</html>  # Not HTML
+```
+
+**Headers:**
+```http
+//# header["content-type"] not_matches_regex text/.*
+```
+
+---
+
+## Assertion Keys
+
+### Status Code
+
+Use `status` as the key to assert on HTTP status codes.
+
+```http
+//# status == 200
+//# status contains 20
+```
+
+Status codes are compared as integers internally (assertion_checker.zig:191-196).
+
+### Response Body
+
+Use `body` as the key to assert on the response body content.
+
+```http
+//# body == "exact match"
+//# body contains "substring"
+```
+
+Body comparisons are performed on the full response body string.
+
+### Response Headers
+
+Use `header["header-name"]` format to assert on specific headers.
+
+```http
+//# header["content-type"] == "application/json"
+//# header["authorization"] contains "Bearer"
+```
+
+<Warning>
+Header names must be enclosed in double quotes within the brackets. The format is case-sensitive in the syntax, though header name matching follows HTTP standards (case-insensitive).
+</Warning>
+
+**Header Name Extraction:**
+
+The header name is extracted from the assertion key using the pattern `header["..."]` (assertion_checker.zig:141-147):
+
+```zig
+fn extractHeaderName(key: []const u8) ![]const u8 {
+    // Expects key in the form header["..."]
+    const start_quote = std.mem.indexOfScalar(u8, key, '"') orelse return error.InvalidAssertionKey;
+    const end_quote = std.mem.lastIndexOfScalar(u8, key, '"') orelse return error.InvalidAssertionKey;
+    if (end_quote <= start_quote) return error.InvalidAssertionKey;
+    return key[start_quote + 1 .. end_quote];
+}
+```
+
+---
+
+## Type Compatibility
+
+### Status Assertions
+
+All operators work with status codes. Status codes are internally converted to strings for comparison.
+
+```http
+//# status == 200          # Exact match
+//# status contains 20      # 200, 201, 204, etc.
+//# status starts_with 2    # All 2xx codes
+//# status matches_regex ^2 # All 2xx codes (regex)
+```
+
+### Body Assertions
+
+All operators work with response bodies. Body content is treated as a string.
+
+```http
+//# body == "Hello"               # Exact match
+//# body contains "Hello"          # Substring
+//# body starts_with "{"           # JSON check
+//# body matches_regex .*success.* # Pattern matching
+```
+
+### Header Assertions
+
+All operators work with headers. Missing headers are treated specially:
+
+- For `==` (equal): Missing header causes assertion failure with "header_missing" reason
+- For `!=` (not_equal): Missing header is acceptable (assertion passes)
+- For `contains`: Missing header causes assertion failure
+- For `not_contains`: Missing header is acceptable (assertion passes)
+- For regex operators: Missing header causes assertion failure
+
+```http
+//# header["content-type"] == "application/json"    # Must exist and match exactly
+//# header["x-custom"] contains "value"              # Must exist and contain value
+//# header["cache-control"] != "no-cache"            # OK if missing or different
+```
+
+---
+
+## Error Handling
+
+### Invalid Assertion Key
+
+If an assertion uses an invalid key (not `status`, `body`, or `header["..."]`), the test fails with `invalid_assertion_key` reason.
+
+```http
+//# invalid_key == "value"  # Will fail with invalid_assertion_key
+```
+
+### Status Format Error
+
+If the status assertion value cannot be parsed as an integer, the test fails with `status_format_error` reason.
+
+```http
+//# status == abc  # Will fail with status_format_error
+```
+
+### Malformed Header Syntax
+
+Header assertions must follow the exact `header["name"]` format. Invalid syntax results in `invalid_assertion_key` error.
+
+```http
+//# header[content-type] == "json"      # Invalid - missing quotes
+//# header["content-type"] == "json"    # Valid
+```
+
+---
+
+## Examples
+
+### Complete Test Example
+
+```http
+### User Registration API Test
+POST https://api.example.com/users
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "email": "test@example.com"
+}
+
+//# status == 201
+//# header["content-type"] contains "json"
+//# body contains "id"
+//# body contains "testuser"
+//# body matches_regex "id":\s*"[a-f0-9-]+"
+//# status starts_with 2
+
+### Verify User Created
+GET https://api.example.com/users/testuser
+
+//# status == 200
+//# body contains "testuser"
+//# body contains "test@example.com"
+```
+
+### Error Handling Test
+
+```http
+### Test Invalid Request
+POST https://api.example.com/users
+Content-Type: application/json
+
+{
+  "invalid": "data"
+}
+
+//# status == 400
+//# status starts_with 4
+//# body contains "error"
+//# header["content-type"] == "application/json"
+```
+
+### Regex Pattern Matching
+
+```http
+### Test Response Format
+GET https://api.example.com/health
+
+//# status matches_regex ^2[0-9]{2}$
+//# body matches_regex .*"status":\s*"healthy".*
+//# header["x-request-id"] matches_regex ^[a-f0-9-]{36}$
+```
+
+---
+
+## See Also
+
+- [Troubleshooting](/reference/troubleshooting) - Debug assertion failures
+- [HTTP File Format](/format/overview) - Learn about the file syntax
+- [Quick Start](/quickstart) - Get started with HTTPSpec

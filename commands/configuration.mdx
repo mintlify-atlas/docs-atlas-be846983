@@ -1,0 +1,215 @@
+---
+title: 'Configuration'
+description: 'Configure HTTPSpec runtime behavior and performance settings'
+---
+
+## Overview
+
+HTTPSpec can be configured through environment variables to control runtime behavior, particularly around parallel test execution.
+
+## Environment Variables
+
+### HTTP_THREAD_COUNT
+
+<ParamField path="HTTP_THREAD_COUNT" type="integer" default="1">
+  Number of threads in the thread pool for parallel test file execution.
+  
+  **Source**: `main.zig:26`
+  ```zig
+  const threads = std.process.parseEnvVarInt("HTTP_THREAD_COUNT", usize, 10) catch 1;
+  ```
+</ParamField>
+
+#### Default Value
+
+If `HTTP_THREAD_COUNT` is not set or cannot be parsed as a valid integer, HTTPSpec defaults to **1 thread** (single-threaded execution).
+
+#### Valid Values
+
+- **Minimum**: `1` (single-threaded)
+- **Maximum**: Limited by system resources
+- **Recommended**: Number of CPU cores or less
+
+## Configuration Examples
+
+### Single-threaded Execution (Default)
+
+```bash
+# Explicitly set to 1 thread
+export HTTP_THREAD_COUNT=1
+httpspec
+```
+
+```bash
+# Default behavior (unset variable)
+unset HTTP_THREAD_COUNT
+httpspec
+```
+
+### Multi-threaded Execution
+
+```bash
+# Use 4 threads for parallel test execution
+export HTTP_THREAD_COUNT=4
+httpspec tests/
+```
+
+### One-time Configuration
+
+```bash
+# Set thread count for a single command
+HTTP_THREAD_COUNT=8 httpspec tests/integration/
+```
+
+### CI/CD Pipeline
+
+```yaml
+# GitHub Actions example
+- name: Run HTTPSpec tests
+  run: httpspec
+  env:
+    HTTP_THREAD_COUNT: 4
+```
+
+```yaml
+# GitLab CI example
+test:
+  script:
+    - httpspec tests/
+  variables:
+    HTTP_THREAD_COUNT: "2"
+```
+
+## Performance Considerations
+
+### Thread Pool Architecture
+
+HTTPSpec uses a thread pool to execute test files in parallel (from `main.zig:57-62`):
+
+```zig
+var pool: std.Thread.Pool = undefined;
+try pool.init(.{
+    .allocator = allocator,
+    .n_jobs = threads,
+});
+```
+
+### Parallelization Strategy
+
+<Note>
+  **File-level parallelization**: Different test files run in parallel across threads.
+  
+  **Request-level sequencing**: Requests within a single file always execute sequentially, regardless of thread count.
+</Note>
+
+This design ensures:
+- Variable assignments work correctly between requests
+- Request dependencies are preserved
+- Shared state within a file remains consistent
+
+### Choosing Thread Count
+
+<CodeGroup>
+```bash CPU-bound Workloads
+# Match CPU core count
+HTTP_THREAD_COUNT=$(nproc) httpspec
+```
+
+```bash I/O-bound Workloads
+# Use more threads than cores for network-heavy tests
+HTTP_THREAD_COUNT=16 httpspec tests/api/
+```
+
+```bash Development
+# Lower thread count for easier debugging
+HTTP_THREAD_COUNT=1 httpspec tests/failing.http
+```
+</CodeGroup>
+
+### Benchmarking Example
+
+```bash
+# Single-threaded baseline
+time HTTP_THREAD_COUNT=1 httpspec tests/
+# Example output: 12.5s
+
+# Multi-threaded execution
+time HTTP_THREAD_COUNT=4 httpspec tests/
+# Example output: 3.8s (3.3x speedup)
+```
+
+## Best Practices
+
+### Local Development
+
+```bash
+# Use moderate parallelization for faster feedback
+export HTTP_THREAD_COUNT=2
+```
+
+### CI/CD Pipelines
+
+```bash
+# Maximize parallelization for fast CI builds
+export HTTP_THREAD_COUNT=8
+```
+
+### Debugging Failed Tests
+
+```bash
+# Single-threaded for clearer error messages
+HTTP_THREAD_COUNT=1 httpspec tests/flaky.http
+```
+
+<Note>
+  When debugging, use `HTTP_THREAD_COUNT=1` to ensure deterministic test execution order and easier-to-read output.
+</Note>
+
+## Advanced Configuration
+
+### Dynamic Thread Count
+
+```bash
+#!/bin/bash
+# Auto-detect optimal thread count based on CPU cores
+if [ -z "$HTTP_THREAD_COUNT" ]; then
+  export HTTP_THREAD_COUNT=$(nproc)
+fi
+
+httpspec tests/
+```
+
+### Resource-constrained Environments
+
+```bash
+# Limit threads in Docker containers with CPU limits
+export HTTP_THREAD_COUNT=2
+httpspec
+```
+
+## Troubleshooting
+
+### Invalid Thread Count
+
+If `HTTP_THREAD_COUNT` contains non-numeric characters, HTTPSpec falls back to the default:
+
+```bash
+HTTP_THREAD_COUNT=invalid httpspec
+# Runs with 1 thread (default)
+```
+
+### Out of Memory
+
+If you experience memory issues with high thread counts:
+
+```bash
+# Reduce parallelization
+HTTP_THREAD_COUNT=2 httpspec tests/
+```
+
+Each thread maintains its own arena allocator for memory isolation, so more threads consume more memory.
+
+## See Also
+
+- [Run Command](/commands/run) - Learn about test execution
+- [Parallel Execution](/guides/parallel-execution) - Optimize test suite performance

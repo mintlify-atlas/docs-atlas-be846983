@@ -1,0 +1,414 @@
+---
+title: "Advanced Assertion Examples"
+description: "Master all assertion types, operators, and patterns available in HTTPSpec"
+---
+
+## Assertion Operators Overview
+
+HTTPSpec supports multiple assertion operators for flexible testing:
+
+<CardGroup cols={2}>
+  <Card title="Equality" icon="equals">
+    `==` - Exact match
+    
+    `!=` - Not equal
+  </Card>
+  <Card title="Contains" icon="magnifying-glass">
+    `contains` - Substring search
+    
+    `not_contains` - Absence check
+  </Card>
+  <Card title="Pattern Matching" icon="wand-sparkles">
+    `starts_with` - Prefix match
+    
+    `ends_with` - Suffix match
+  </Card>
+  <Card title="Regular Expressions" icon="code">
+    `matches_regex` - Regex match
+    
+    `not_matches_regex` - Regex negation
+  </Card>
+</CardGroup>
+
+## Equality Assertions
+
+### Exact Match (==)
+
+Test for exact equality:
+
+```http
+### Test exact status code
+GET https://api.example.com/users
+
+//# status == 200
+//# header["content-type"] == "application/json"
+//# body == "OK"
+```
+
+### Not Equal (!=)
+
+Ensure values don't match:
+
+```http
+### Test status is not an error
+GET https://api.example.com/health
+
+//# status != 404
+//# status != 500
+//# header["content-type"] != "text/plain"
+```
+
+## Contains Assertions
+
+### Substring Search (contains)
+
+Check if a value contains a substring:
+
+```http
+### Test JSONPlaceholder API
+GET https://jsonplaceholder.typicode.com/users/1
+Accept: application/json
+
+//# status == 200
+//# body contains "Leanne Graham"
+//# body contains "hildegard.org"
+//# header["content-type"] contains "json"
+```
+
+<Note>
+The `contains` operator is case-sensitive for body content but case-insensitive for headers.
+</Note>
+
+### Not Contains (not_contains)
+
+Verify content is absent:
+
+```http
+### Ensure no sensitive data leaked
+GET https://api.example.com/public/profile
+
+//# body not_contains "password"
+//# body not_contains "secret"
+//# body not_contains "token"
+//# header["content-type"] not_contains "xml"
+```
+
+## Pattern Matching Assertions
+
+### Starts With (starts_with)
+
+Check if content begins with a specific string:
+
+```http
+### Test response format
+GET https://api.example.com/data
+
+//# status starts_with "2"
+//# body starts_with "{\"data\""
+//# header["content-type"] starts_with "application"
+```
+
+### Ends With (ends_with)
+
+Verify content ends with a pattern:
+
+```http
+### Test file download
+GET https://api.example.com/files/report.pdf
+
+//# header["content-type"] ends_with "pdf"
+//# header["content-disposition"] ends_with ".pdf\""
+```
+
+## Regular Expression Assertions
+
+### Regex Match (matches_regex)
+
+Use regex patterns for complex validation:
+
+```http
+### Test with regex patterns
+GET https://api.example.com/users/123
+Accept: application/json
+
+//# status matches_regex "^2.*"
+//# body matches_regex ".*success.*"
+//# header["content-type"] matches_regex "application/.*"
+```
+
+#### Common Regex Patterns
+
+<CodeGroup>
+
+```regex Status Codes
+//# status matches_regex "^2.*"        # Any 2xx status
+//# status matches_regex "^[23].*"     # 2xx or 3xx
+//# status not_matches_regex "^[45].*" # Not 4xx or 5xx
+```
+
+```regex JSON Structure
+//# body matches_regex "\\{.*\\}"        # Contains JSON object
+//# body matches_regex ".*\"id\".*"      # Has 'id' field
+//# body matches_regex ".*\"email\".*"   # Has 'email' field
+```
+
+```regex Headers
+//# header["content-type"] matches_regex "application/(json|xml)"
+//# header["cache-control"] matches_regex "max-age=[0-9]+"
+```
+
+</CodeGroup>
+
+### Regex Negation (not_matches_regex)
+
+Ensure content doesn't match a pattern:
+
+```http
+### Ensure no error codes
+GET https://api.example.com/status
+
+//# status not_matches_regex "^[45].*"
+//# body not_matches_regex ".*error.*"
+//# body not_matches_regex ".*exception.*"
+```
+
+## Multiple Assertions Per Request
+
+Combine different assertion types for comprehensive validation:
+
+```http
+### Comprehensive API test
+GET https://jsonplaceholder.typicode.com/users/1
+Accept: application/json
+
+//# status == 200
+//# status starts_with "2"
+//# status not_matches_regex "^[45].*"
+//# header["content-type"] contains "json"
+//# header["content-type"] == "application/json; charset=utf-8"
+//# body contains "Leanne Graham"
+//# body contains "hildegard.org"
+//# body not_contains "error"
+//# body matches_regex ".*\"id\"\\s*:\\s*1.*"
+```
+
+<Warning>
+All assertions must pass for the test to succeed. If any assertion fails, the entire request is marked as failed.
+</Warning>
+
+## Header Assertion Examples
+
+Test various header scenarios:
+
+<Tabs>
+  <Tab title="Content Type">
+    ```http
+    ### Test content-type variations
+    GET https://api.example.com/data
+
+    //# header["content-type"] == "application/json"
+    //# header["content-type"] contains "json"
+    //# header["content-type"] starts_with "application"
+    //# header["content-type"] matches_regex "application/(json|xml)"
+    ```
+  </Tab>
+  <Tab title="CORS">
+    ```http
+    ### Test CORS headers
+    OPTIONS https://api.example.com/users
+    Origin: https://example.com
+
+    //# header["access-control-allow-origin"] == "*"
+    //# header["access-control-allow-methods"] contains "GET"
+    //# header["access-control-allow-methods"] contains "POST"
+    //# header["access-control-allow-headers"] contains "Content-Type"
+    ```
+  </Tab>
+  <Tab title="Caching">
+    ```http
+    ### Test cache headers
+    GET https://api.example.com/static/logo.png
+
+    //# header["cache-control"] contains "max-age"
+    //# header["cache-control"] not_contains "no-cache"
+    //# header["cache-control"] matches_regex "max-age=[0-9]+"
+    ```
+  </Tab>
+  <Tab title="Security">
+    ```http
+    ### Test security headers
+    GET https://api.example.com
+
+    //# header["strict-transport-security"] contains "max-age"
+    //# header["x-content-type-options"] == "nosniff"
+    //# header["x-frame-options"] == "DENY"
+    ```
+  </Tab>
+</Tabs>
+
+## Body Assertion Patterns
+
+### JSON Response Testing
+
+```http
+### Test JSON structure
+GET https://api.example.com/users/1
+Accept: application/json
+
+//# status == 200
+//# body contains "\"id\""
+//# body contains "\"email\""
+//# body contains "\"name\""
+//# body matches_regex ".*\"id\"\\s*:\\s*[0-9]+.*"
+//# body not_contains "password"
+```
+
+### Error Response Testing
+
+```http
+### Test error response format
+GET https://api.example.com/users/999999
+
+//# status == 404
+//# body contains "error"
+//# body contains "not found"
+//# body matches_regex ".*\"message\".*"
+```
+
+### Empty Body Validation
+
+```http
+### Test no content response
+DELETE https://api.example.com/users/123
+Authorization: Bearer TOKEN
+
+//# status == 204
+//# body == ""
+```
+
+## Real-World Complex Example
+
+Here's a comprehensive test demonstrating multiple assertion types:
+
+```http
+### Test with some failing assertions (to show diagnostics)
+GET https://httpbin.org/json
+
+//# status == 404
+//# body contains "nonexistent"
+//# header["content-type"] == "text/plain"
+```
+
+When this test runs, HTTPSpec will report all failures:
+
+```bash
+✗ Test with some failing assertions (120ms)
+  [Fail] Expected status 404, got 200
+  [Fail] Expected body to contain "nonexistent", got "{...}"
+  [Fail] Expected header "content-type" to be "text/plain", got "application/json"
+  3 assertions failed
+```
+
+<Note>
+HTTPSpec reports all assertion failures, not just the first one. This helps you understand all issues at once.
+</Note>
+
+## Assertion Targets
+
+All assertion operators work with three targets:
+
+<AccordionGroup>
+  <Accordion title="Status Code">
+    ```http
+    //# status == 200
+    //# status != 404
+    //# status contains "20"        # Status contains substring
+    //# status starts_with "2"       # 2xx status codes
+    //# status matches_regex "^2.*"  # 2xx using regex
+    ```
+  </Accordion>
+
+  <Accordion title="Response Body">
+    ```http
+    //# body == "exact match"
+    //# body contains "substring"
+    //# body not_contains "error"
+    //# body starts_with "{"
+    //# body ends_with "}"
+    //# body matches_regex ".*pattern.*"
+    ```
+  </Accordion>
+
+  <Accordion title="Response Headers">
+    ```http
+    //# header["content-type"] == "application/json"
+    //# header["content-type"] contains "json"
+    //# header["cache-control"] not_contains "no-cache"
+    //# header["x-api-version"] starts_with "v"
+    //# header["authorization"] matches_regex "Bearer .*"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<Steps>
+  <Step title="Start with simple assertions">
+    Begin with status code checks, then add more specific validations:
+    ```http
+    //# status == 200
+    //# header["content-type"] contains "json"
+    //# body contains "success"
+    ```
+  </Step>
+
+  <Step title="Use appropriate operators">
+    Choose the right operator for your needs:
+    - Use `==` for exact matches (status codes, specific header values)
+    - Use `contains` for flexible content checks
+    - Use `matches_regex` for complex patterns
+  </Step>
+
+  <Step title="Test both positive and negative cases">
+    Verify both what should and shouldn't be present:
+    ```http
+    //# body contains "success"
+    //# body not_contains "error"
+    ```
+  </Step>
+
+  <Step title="Combine assertions strategically">
+    Add multiple assertions to catch different failure modes:
+    ```http
+    //# status == 200
+    //# status not_matches_regex "^[45].*"
+    //# header["content-type"] contains "json"
+    //# body contains "data"
+    //# body not_contains "error"
+    ```
+  </Step>
+</Steps>
+
+## Assertion Reference Table
+
+| Operator | Syntax | Status | Body | Headers | Description |
+|----------|--------|:------:|:----:|:-------:|-------------|
+| `==` | `key == value` | ✓ | ✓ | ✓ | Exact match |
+| `!=` | `key != value` | ✓ | ✓ | ✓ | Not equal |
+| `contains` | `key contains value` | ✓ | ✓ | ✓ | Contains substring |
+| `not_contains` | `key not_contains value` | ✓ | ✓ | ✓ | Does not contain |
+| `starts_with` | `key starts_with value` | ✓ | ✓ | ✓ | Starts with prefix |
+| `ends_with` | `key ends_with value` | ✓ | ✓ | ✓ | Ends with suffix |
+| `matches_regex` | `key matches_regex pattern` | ✓ | ✓ | ✓ | Matches regex |
+| `not_matches_regex` | `key not_matches_regex pattern` | ✓ | ✓ | ✓ | Doesn't match regex |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Basic Tests" icon="flask" href="/examples/basic-tests">
+    Review fundamental testing concepts
+  </Card>
+  <Card title="API Testing" icon="server" href="/examples/api-testing">
+    Learn REST API testing patterns
+  </Card>
+</CardGroup>

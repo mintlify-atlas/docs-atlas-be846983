@@ -1,0 +1,192 @@
+---
+title: Variables
+description: Use variable substitution for dynamic values in HTTPSpec requests
+---
+
+Variables allow you to define reusable values and reference them throughout your HTTPSpec files. This is useful for authentication tokens, API keys, base URLs, and other values you might want to change or reuse.
+
+<Warning>
+Variable substitution is defined in the HTTPSpec specification but **not yet implemented** in the current version of the tool. This page documents the planned syntax based on the specification.
+</Warning>
+
+## Variable Definition
+
+Define variables using the `@` prefix followed by the variable name, an equals sign, and the value:
+
+```
+@variable_name = value
+```
+
+### Examples
+
+```http Variable Definitions
+@token = abc123
+@base_url = https://api.example.com
+@user_id = 12345
+```
+
+<Note>
+Variable definitions should appear before the requests that use them.
+</Note>
+
+## Variable Reference
+
+Reference variables in your requests using double curly braces:
+
+```
+{{variable_name}}
+```
+
+### In URLs
+
+```http URL Variables
+@base_url = https://api.example.com
+@user_id = 123
+
+GET {{base_url}}/users/{{user_id}}
+```
+
+### In Headers
+
+```http Header Variables
+@token = abc123
+
+GET https://api.example.com/users/123
+Authorization: Bearer {{token}}
+Accept: application/json
+```
+
+### In Request Bodies
+
+```http Body Variables
+@username = alice
+@email = alice@example.com
+
+POST https://api.example.com/users
+Content-Type: application/json
+
+{
+  "name": "{{username}}",
+  "email": "{{email}}"
+}
+```
+
+## Complete Example from Specification
+
+Here's the full example from the HTTPSpec specification document:
+
+```http Complete Variable Example
+@token = abc123
+
+### Get user by ID
+GET https://api.example.com/users/123
+Authorization: Bearer {{token}}
+Accept: application/json
+
+//# status == 200
+//# header["Content-Type"] == "application/json"
+//# body.id == 123
+//# body.email contains "@example.com"
+
+### Create new user
+POST https://api.example.com/users
+Content-Type: application/json
+
+{
+    "name": "Alice"
+}
+
+//# status == 201
+//# body.name == "Alice"
+```
+
+## Use Cases
+
+<AccordionGroup>
+  <Accordion title="Authentication Tokens">
+    Define your auth token once and use it across multiple requests:
+    ```http
+    @auth_token = your-secret-token
+    
+    GET https://api.example.com/users
+    Authorization: Bearer {{auth_token}}
+    
+    GET https://api.example.com/posts
+    Authorization: Bearer {{auth_token}}
+    ```
+  </Accordion>
+  
+  <Accordion title="Environment-Specific URLs">
+    Switch between development, staging, and production:
+    ```http
+    @api_url = https://staging-api.example.com
+    
+    GET {{api_url}}/users
+    GET {{api_url}}/posts
+    ```
+  </Accordion>
+  
+  <Accordion title="Shared Test Data">
+    Reuse test data values:
+    ```http
+    @test_user_id = 123
+    @test_email = test@example.com
+    
+    GET https://api.example.com/users/{{test_user_id}}
+    
+    //# body contains "{{test_email}}"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Implementation Status
+
+<Warning>
+Variable substitution is currently **not implemented**. Variables defined with `@` and referenced with `{{}}` will not be replaced in the current version of HTTPSpec.
+</Warning>
+
+### Planned Features
+
+According to the HTTPSpec specification, future versions may support:
+
+- **Response variable extraction** - Capture values from responses and use them in subsequent requests
+- **Environment variables** - Reference system environment variables in test files
+- **Computed variables** - Variables with dynamic values based on expressions
+
+### Current Workarounds
+
+Until variable substitution is implemented, you can:
+
+1. **Use environment variables in your shell** and process files with `envsubst` before running HTTPSpec
+2. **Use templating tools** to generate `.http` files from templates
+3. **Hard-code values** directly in your test files
+
+```bash envsubst Example
+# Define environment variables
+export API_TOKEN=abc123
+export BASE_URL=https://api.example.com
+
+# Use envsubst to replace variables
+envsubst < template.http > test.http
+httpspec test.http
+```
+
+## Syntax Reference
+
+| Syntax | Purpose | Status |
+|--------|---------|--------|
+| `@var = value` | Define a variable | Planned |
+| `{{var}}` | Reference a variable | Planned |
+| `@var = ${ENV_VAR}` | Environment variable | Future |
+| Response extraction | Capture from responses | Future |
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Request Format" icon="code" href="/format/requests">
+    Learn the complete HTTP request syntax
+  </Card>
+  <Card title="Assertions" icon="check" href="/format/assertions">
+    How to validate responses with assertions
+  </Card>
+</CardGroup>

@@ -1,0 +1,175 @@
+---
+title: 'httpspec run'
+description: 'Execute HTTP files as integration tests with assertions'
+---
+
+## Overview
+
+The `httpspec` command executes `.http` or `.httpspec` files, running all HTTP requests sequentially within each file and validating responses against assertions.
+
+## Command Syntax
+
+```bash
+httpspec [files/directories...]
+```
+
+## Positional Arguments
+
+<ParamField path="files/directories" type="string[]" optional>
+  One or more paths to HTTP spec files or directories:
+  - **Files**: Must have `.http` or `.httpspec` extension
+  - **Directories**: Recursively searches for all `.http` and `.httpspec` files
+  - **Omitted**: If no arguments provided, recursively finds all spec files in the current working directory
+</ParamField>
+
+## Flags
+
+<ParamField path="--help" type="flag">
+  Display help message and exit
+</ParamField>
+
+<ParamField path="-h" type="flag">
+  Alias for `--help`
+</ParamField>
+
+## Default Behavior
+
+When run without arguments, HTTPSpec automatically discovers and runs all test files:
+
+```bash
+# Run all .http and .httpspec files in current directory and subdirectories
+httpspec
+```
+
+**Discovery Rules** (from `main.zig:84-87`):
+- Recursively walks the current working directory
+- Finds files with `.http` or `.httpspec` extensions (case-insensitive)
+- Skips hidden directories (`.` and `..`)
+
+## Examples
+
+### Run All Tests in Current Directory
+
+```bash
+httpspec
+```
+
+**Output:**
+```
+All 3 tests ran successfully!
+
+Pass: 3
+Fail: 0
+Invalid: 0
+```
+
+### Run a Single File
+
+```bash
+httpspec tests/api/users.http
+```
+
+### Run Multiple Files
+
+```bash
+httpspec tests/auth.http tests/api/posts.http
+```
+
+### Run All Tests in a Directory
+
+```bash
+httpspec tests/integration/
+```
+
+HTTPSpec will recursively find all `.http` and `.httpspec` files within the `tests/integration/` directory.
+
+### Mix Files and Directories
+
+```bash
+httpspec tests/critical.http tests/regression/
+```
+
+## Exit Codes
+
+HTTPSpec follows standard Unix exit code conventions:
+
+<CodeGroup>
+```bash Exit Code 0
+# Success - all tests passed
+httpspec
+# Exit code: 0
+```
+
+```bash Exit Code 1
+# Failure - one or more tests failed or invalid
+httpspec failing-test.http
+# Exit code: 1 (implied by test failure)
+```
+</CodeGroup>
+
+## Test Execution Flow
+
+HTTPSpec processes tests with the following behavior (from `main.zig:106-158`):
+
+1. **Parallel File Execution**: Test files run in parallel using a thread pool
+2. **Sequential Requests**: Within each file, requests execute sequentially
+3. **Early Exit on Failure**: If any assertion fails in a file, remaining requests in that file are skipped
+4. **Memory Isolation**: Each test file uses an isolated arena allocator
+
+<Note>
+  Requests within a single file always run sequentially, even when multiple files are tested in parallel. This ensures that variable assignments and request dependencies work correctly.
+</Note>
+
+## Output Format
+
+### Successful Run
+
+```
+All 5 tests ran successfully!
+
+Pass: 5
+Fail: 0
+Invalid: 0
+```
+
+### Failed Assertions
+
+```
+Failed to execute request in file tests/api.http: StatusCodeMismatch
+All 3 tests ran successfully!
+
+Pass: 2
+Fail: 1
+Invalid: 0
+```
+
+### Invalid Test Files
+
+```
+Failed to parse file tests/broken.http: InvalidSyntax
+All 2 tests ran successfully!
+
+Pass: 1
+Fail: 0
+Invalid: 1
+```
+
+## Test Categories
+
+HTTPSpec tracks three categories of test results:
+
+- **Pass**: All requests executed successfully and all assertions passed
+- **Fail**: One or more assertions failed during execution
+- **Invalid**: File could not be parsed or requests could not be executed
+
+## Error Handling
+
+<Note>
+  If a positional argument is neither a valid `.http`/`.httpspec` file nor a directory, HTTPSpec returns an `InvalidPositionalArgument` error.
+</Note>
+
+## See Also
+
+- [Configuration](/commands/configuration) - Configure thread pool and performance settings
+- [Writing Tests](/guides/writing-tests) - Learn assertion syntax
+- [HTTP File Format](/format/overview) - Understand `.http` file structure

@@ -1,0 +1,228 @@
+---
+title: Request Format
+description: HTTP request syntax including methods, URLs, headers, and request bodies
+---
+
+HTTPSpec uses the standard `.http` file format for defining HTTP requests. This page covers the complete syntax for request lines, headers, and bodies.
+
+## Request Line
+
+The request line is the first line of each request block and follows this format:
+
+```
+<HTTP_METHOD> <URL> [HTTP_VERSION]
+```
+
+### Components
+
+- **HTTP Method** (required) - Standard HTTP methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`
+- **URL** (required) - Complete URL including protocol (http:// or https://)
+- **HTTP Version** (optional) - Defaults to `HTTP/1.1` if not specified
+
+<CodeGroup>
+
+```http GET Request
+GET https://api.example.com/users/123
+```
+
+```http POST Request
+POST https://api.example.com/users
+```
+
+```http With HTTP Version
+GET https://api.example.com/users HTTP/1.1
+```
+
+```http HTTP/2 Request
+GET https://api.example.com/users HTTP/2
+```
+
+</CodeGroup>
+
+### Supported HTTP Versions
+
+- `HTTP/1.0`
+- `HTTP/1.1` (default)
+- `HTTP/2`
+- `HTTP/3`
+
+## Headers
+
+Headers are specified as `Key: Value` pairs on separate lines following the request line. Each header must be on its own line.
+
+```http Request with Headers
+GET https://jsonplaceholder.typicode.com/users/1
+Accept: application/json
+User-Agent: HTTPSpec/1.0
+Authorization: Bearer abc123
+```
+
+<Note>
+Header names are case-insensitive per HTTP specification, but HTTPSpec preserves the casing you provide.
+</Note>
+
+### Common Headers
+
+<AccordionGroup>
+  <Accordion title="Content-Type">
+    Specifies the media type of the request body:
+    ```http
+    POST https://api.example.com/users
+    Content-Type: application/json
+    
+    {"name": "Alice"}
+    ```
+  </Accordion>
+  
+  <Accordion title="Authorization">
+    Used for authentication:
+    ```http
+    GET https://api.example.com/protected
+    Authorization: Bearer token123
+    ```
+  </Accordion>
+  
+  <Accordion title="Accept">
+    Indicates expected response format:
+    ```http
+    GET https://api.example.com/data
+    Accept: application/json
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Request Body
+
+The request body starts after a blank line following the headers. Everything between the blank line and the assertions (or next request) is treated as the body.
+
+### JSON Body
+
+```http POST with JSON
+POST https://api.example.com/users
+Content-Type: application/json
+
+{
+  "name": "John Doe",
+  "email": "john@doe.com"
+}
+
+//# status == 201
+```
+
+### Plain Text Body
+
+```http POST with Text
+POST https://api.example.com/echo
+Content-Type: text/plain
+
+Hello, World!
+
+//# status == 200
+```
+
+### Multiline Body
+
+Bodies can span multiple lines. HTTPSpec preserves line breaks in the body content:
+
+```http Multiline JSON
+POST https://api.example.com/posts
+Content-Type: application/json
+
+{
+  "title": "My Post",
+  "content": "This is a long post\nthat spans multiple lines",
+  "tags": ["http", "testing"],
+  "published": true
+}
+
+//# status == 201
+```
+
+## Request Names
+
+You can name your requests using a comment line starting with `###`. This makes test output more readable and helps organize your test files.
+
+```http Named Requests
+### Get user by ID
+GET https://api.example.com/users/123
+
+//# status == 200
+
+### Create new user
+POST https://api.example.com/users
+Content-Type: application/json
+
+{"name": "Alice"}
+
+//# status == 201
+```
+
+The name appears in test output and helps you identify which request failed if there are issues.
+
+## Multiple Requests in One File
+
+You can include multiple request blocks in a single file. Requests are separated by blank lines or request names and executed sequentially.
+
+```http Sequential Requests
+### Make a 200 request
+GET http://httpbin.org/status/200
+Content-Type: application/json
+
+### Make a 404 request
+GET http://httpbin.org/status/404
+Content-Type: application/json
+
+//# status == 404
+```
+
+<Warning>
+Requests are executed in order. If an early request fails, subsequent requests still execute unless the failure is critical.
+</Warning>
+
+## Comments
+
+Lines starting with `#` or `//` (but not `//#`) are treated as comments and ignored by the parser:
+
+```http With Comments
+# This is a test for the user API
+// Another comment style
+
+GET https://api.example.com/users/1
+
+//# status == 200
+```
+
+<Note>
+The `//#` prefix is reserved for assertions and is not treated as a regular comment.
+</Note>
+
+## Real-World Example
+
+Here's a complete example from the HTTPSpec test suite:
+
+```http test.httpspec
+### Test JSONPlaceholder API
+GET https://jsonplaceholder.typicode.com/users/1
+Accept: application/json
+
+//# status == 200
+//# body contains "Leanne Graham"
+
+### Test with some failing assertions (to show diagnostics)
+GET https://httpbin.org/json
+
+//# status == 404
+//# body contains "nonexistent"
+//# header["content-type"] == "text/plain"
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Assertions" icon="check" href="/format/assertions">
+    Learn how to validate responses with assertions
+  </Card>
+  <Card title="Variables" icon="brackets-curly" href="/format/variables">
+    Use variables for dynamic request values
+  </Card>
+</CardGroup>

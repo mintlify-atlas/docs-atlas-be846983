@@ -1,0 +1,249 @@
+---
+title: Assertions
+description: Validate HTTP responses with HTTPSpec's assertion syntax
+---
+
+Assertions allow you to validate that HTTP responses match your expected values. They're the core feature that makes HTTPSpec useful for automated testing.
+
+## Assertion Syntax
+
+Assertions are written on lines that start with the `//#` prefix, followed by a three-part expression:
+
+```
+//# <key> <operator> <value>
+```
+
+### Components
+
+- **Key** - What part of the response to check (e.g., `status`, `header["name"]`, `body`)
+- **Operator** - How to compare (e.g., `==`, `!=`, `contains`)
+- **Value** - The expected value to compare against
+
+<CodeGroup>
+
+```http Status Check
+GET https://api.example.com/users/1
+
+//# status == 200
+```
+
+```http Header Check
+GET https://api.example.com/users/1
+
+//# header["content-type"] == "application/json"
+```
+
+```http Body Check
+GET https://api.example.com/users/1
+
+//# body contains "Leanne Graham"
+```
+
+</CodeGroup>
+
+## Assertion Keys
+
+### Status Code
+
+Check the HTTP status code of the response:
+
+```http Status Assertions
+GET https://api.example.com/users/1
+
+//# status == 200
+```
+
+```http Check for Error
+GET https://api.example.com/not-found
+
+//# status == 404
+```
+
+### Headers
+
+Validate response headers using bracket notation with the header name:
+
+```http Header Assertions
+GET https://api.example.com/data
+
+//# header["content-type"] == "application/json"
+//# header["cache-control"] contains "max-age"
+```
+
+<Note>
+Header names in assertions are case-sensitive in the brackets, but HTTP headers themselves are case-insensitive.
+</Note>
+
+### Response Body
+
+Check the response body content:
+
+```http Body Assertions
+GET https://jsonplaceholder.typicode.com/users/1
+
+//# body contains "Leanne Graham"
+//# body contains "email"
+```
+
+<Info>
+For JSON responses, HTTPSpec currently supports whole-body assertions. JSON path support (e.g., `body.user.name`) is planned for future versions.
+</Info>
+
+## Assertion Operators
+
+HTTPSpec supports multiple comparison operators. Here's a quick overview:
+
+<CodeGroup>
+
+```http Equality
+//# status == 200
+//# status equal 200
+```
+
+```http Inequality
+//# status != 404
+```
+
+```http Contains
+//# body contains "expected text"
+```
+
+```http Not Contains
+//# body not_contains "unwanted text"
+```
+
+```http Starts With
+//# body starts_with "{\"user\":"
+```
+
+```http Ends With
+//# body ends_with "}"
+```
+
+</CodeGroup>
+
+### Operator Reference
+
+| Operator | Aliases | Description |
+|----------|---------|-------------|
+| `==` | `equal` | Exact equality |
+| `!=` | - | Not equal |
+| `contains` | - | Contains substring |
+| `not_contains` | - | Does not contain substring |
+| `starts_with` | - | Starts with prefix |
+| `ends_with` | - | Ends with suffix |
+| `matches_regex` | - | Matches regular expression (planned) |
+| `not_matches_regex` | - | Does not match regex (planned) |
+
+<Warning>
+Regex operators (`matches_regex`, `not_matches_regex`) are defined in the parser but not yet fully implemented in the assertion checker.
+</Warning>
+
+## Multiple Assertions
+
+You can include multiple assertions for a single request. All assertions must pass for the test to succeed:
+
+```http Multiple Assertions
+### Test JSONPlaceholder API
+GET https://jsonplaceholder.typicode.com/users/1
+Accept: application/json
+
+//# status == 200
+//# body contains "Leanne Graham"
+//# header["content-type"] == "application/json; charset=utf-8"
+```
+
+Each assertion is evaluated independently, and HTTPSpec reports which ones passed and which failed.
+
+## Real-World Examples
+
+### Successful API Test
+
+```http User API Test
+### Get user by ID
+GET https://api.example.com/users/123
+Authorization: Bearer token123
+Accept: application/json
+
+//# status == 200
+//# header["Content-Type"] == "application/json"
+//# body contains "email"
+//# body contains "name"
+```
+
+### Testing Error Responses
+
+```http Error Handling
+### Test 404 response
+GET http://httpbin.org/status/404
+
+//# status == 404
+```
+
+### Mixed Assertions from Test Suite
+
+From the actual HTTPSpec test files:
+
+```http test.httpspec
+### Test JSONPlaceholder API
+GET https://jsonplaceholder.typicode.com/users/1
+Accept: application/json
+
+//# status == 200
+//# body contains "Leanne Graham"
+
+### Test with some failing assertions (to show diagnostics)
+GET https://httpbin.org/json
+
+//# status == 404
+//# body contains "nonexistent"
+//# header["content-type"] == "text/plain"
+```
+
+## Assertion Placement
+
+Assertions should appear after the request body (if any) and before the next request:
+
+```http Proper Placement
+POST https://api.example.com/users
+Content-Type: application/json
+
+{
+  "name": "Alice"
+}
+
+//# status == 201
+//# body contains "Alice"
+
+### Next request starts here
+GET https://api.example.com/users
+```
+
+## Comments vs Assertions
+
+Regular comments use `#` or `//`, while assertions use `//#`:
+
+```http Comments and Assertions
+# This is a comment
+// This is also a comment
+
+GET https://api.example.com/users/1
+
+//# status == 200  # This is an assertion
+// This is a comment, NOT an assertion
+```
+
+<Warning>
+Don't forget the `#` after `//` for assertions. A line with just `//` is treated as a comment and ignored.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Assertion Types" icon="list-check" href="/guides/assertion-types">
+    Complete reference of all assertion operators with examples
+  </Card>
+  <Card title="Variables" icon="brackets-curly" href="/format/variables">
+    Use variables in assertions for dynamic testing
+  </Card>
+</CardGroup>

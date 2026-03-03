@@ -1,0 +1,139 @@
+---
+title: "Basic Testing Examples"
+description: "Learn how to write simple HTTP tests with HTTPSpec using real-world examples"
+---
+
+## Simple GET Request
+
+The most basic test checks if an API endpoint returns the expected status code:
+
+```http
+GET https://jsonplaceholder.typicode.com/users/1
+Accept: application/json
+
+//# status == 200
+```
+
+This test:
+1. Makes a GET request to the JSONPlaceholder API
+2. Sets the Accept header to request JSON
+3. Asserts that the response status is 200 (OK)
+
+## Running Your First Test
+
+Save the above code to a file called `basic.http` and run:
+
+```bash
+httpspec basic.http
+```
+
+You should see output like:
+
+```
+✓ GET https://jsonplaceholder.typicode.com/users/1 (200ms)
+  1 assertion passed
+
+Tests: 1 passed, 1 total
+```
+
+## Multiple Assertions
+
+You can add multiple assertions to validate different aspects of the response:
+
+```http
+### Test JSONPlaceholder API
+GET https://jsonplaceholder.typicode.com/users/1
+Accept: application/json
+
+//# status == 200
+//# body contains "Leanne Graham"
+```
+
+This test validates:
+- The response status is 200
+- The response body contains the string "Leanne Graham"
+
+<Note>
+The `###` prefix creates a named test. This helps identify tests in output and makes your test files more organized.
+</Note>
+
+## Multiple Requests in One File
+
+HTTPSpec executes requests sequentially, making it easy to test multiple endpoints:
+
+```http
+### Test successful response
+GET http://httpbin.org/status/200
+Content-Type: application/json
+
+### Test not found response
+GET http://httpbin.org/status/404
+Content-Type: application/json
+```
+
+Each request is separated by the `###` marker. HTTPSpec runs them in order and reports results for each.
+
+## Expected Output
+
+When you run HTTPSpec, you get clear feedback on each test:
+
+<CodeGroup>
+
+```bash Passing Tests
+✓ Test JSONPlaceholder API (150ms)
+  2 assertions passed
+
+Tests: 1 passed, 1 total
+Time: 0.15s
+```
+
+```bash Failing Tests
+✗ Test with some failing assertions (120ms)
+  [Fail] Expected status 404, got 200
+  [Fail] Expected body to contain "nonexistent", got "{...}"
+  [Fail] Expected header "content-type" to be "text/plain", got "application/json"
+  3 assertions failed
+
+Tests: 0 passed, 1 failed, 1 total
+Time: 0.12s
+```
+
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use descriptive test names">
+    Name your tests clearly with `###` so failures are easy to identify:
+    ```http
+    ### Test user creation endpoint returns 201
+    POST https://api.example.com/users
+    ```
+  </Accordion>
+
+  <Accordion title="Start simple">
+    Begin with status code assertions, then add more specific checks:
+    ```http
+    //# status == 200
+    //# body contains "success"
+    ```
+  </Accordion>
+
+  <Accordion title="Group related tests">
+    Keep related API tests in the same file:
+    - `users.http` - User management endpoints
+    - `auth.http` - Authentication endpoints
+    - `products.http` - Product catalog endpoints
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Testing" icon="server" href="/examples/api-testing">
+    Learn how to test REST APIs with body and header validation
+  </Card>
+  <Card title="Advanced Assertions" icon="check-double" href="/examples/advanced-assertions">
+    Explore all assertion types and operators
+  </Card>
+</CardGroup>

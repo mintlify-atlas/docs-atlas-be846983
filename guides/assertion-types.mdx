@@ -1,0 +1,427 @@
+---
+title: "Assertion Types"
+description: "Complete reference for all HTTPSpec assertion types and operators"
+---
+
+Assertions in HTTPSpec validate HTTP responses against expected values. This guide covers all supported assertion types, operators, and provides examples for each.
+
+## Assertion Syntax
+
+Assertions follow this format:
+
+```
+//# <key> <operator> <value>
+```
+
+- `<key>`: What to check (status, body, header)
+- `<operator>`: How to compare (==, contains, matches_regex, etc.)
+- `<value>`: Expected value
+
+## Assertion Keys
+
+HTTPSpec supports three types of assertions:
+
+### Status Code
+
+Validate the HTTP status code:
+
+```http
+GET https://api.example.com/users
+
+//# status == 200
+```
+
+### Response Body
+
+Validate the response body content:
+
+```http
+GET https://api.example.com/users/123
+
+//# body contains "John Doe"
+//# body == "exact response text"
+```
+
+### Response Headers
+
+Validate specific header values using bracket notation:
+
+```http
+GET https://api.example.com/users
+
+//# header["content-type"] == "application/json"
+//# header["cache-control"] contains "no-cache"
+```
+
+<Note>
+Header names are case-insensitive when matching, but use lowercase in your assertions for consistency.
+</Note>
+
+## Assertion Operators
+
+HTTPSpec supports eight assertion operators:
+
+### Equal (`==` or `equal`)
+
+Exact equality check:
+
+```http
+### Status code equals 200
+GET https://api.example.com/users
+//# status == 200
+
+### Body exactly matches
+GET https://api.example.com/health
+//# body == "OK"
+
+### Header exactly matches
+GET https://api.example.com/api
+//# header["content-type"] == "application/json"
+```
+
+<Tip>
+Both `==` and `equal` work identically. Use `==` for brevity.
+</Tip>
+
+### Not Equal (`!=`)
+
+Verifies the value is NOT equal:
+
+```http
+### Status is not 404
+GET https://api.example.com/users
+//# status != 404
+
+### Body doesn't match error message
+GET https://api.example.com/users/123
+//# body != "User not found"
+
+### Header is not XML
+GET https://api.example.com/api
+//# header["content-type"] != "application/xml"
+```
+
+### Contains (`contains`)
+
+Checks if the value contains a substring:
+
+```http
+### Status contains "2" (matches 200, 201, 204, etc.)
+GET https://api.example.com/users
+//# status contains "2"
+
+### Body contains user name
+GET https://api.example.com/users/123
+//# body contains "John Doe"
+//# body contains "email"
+
+### Header contains charset
+GET https://api.example.com/api
+//# header["content-type"] contains "charset=utf-8"
+```
+
+### Not Contains (`not_contains`)
+
+Verifies the value does NOT contain a substring:
+
+```http
+### Body doesn't contain error
+GET https://api.example.com/users/123
+//# body not_contains "error"
+//# body not_contains "failed"
+
+### Header doesn't contain xml
+GET https://api.example.com/api
+//# header["content-type"] not_contains "xml"
+```
+
+### Starts With (`starts_with`)
+
+Checks if the value starts with a specific string:
+
+```http
+### Status starts with "2" (2xx success codes)
+GET https://api.example.com/users
+//# status starts_with "2"
+
+### Body starts with expected prefix
+GET https://api.example.com/greeting
+//# body starts_with "Hello"
+
+### Header starts with "application"
+GET https://api.example.com/api
+//# header["content-type"] starts_with "application"
+```
+
+### Ends With (`ends_with`)
+
+Checks if the value ends with a specific string:
+
+```http
+### Body ends with expected suffix
+GET https://api.example.com/message
+//# body ends_with "world!"
+
+### Header ends with charset
+GET https://api.example.com/api
+//# header["content-type"] ends_with "charset=utf-8"
+```
+
+### Matches Regex (`matches_regex`)
+
+Validates against a regular expression pattern:
+
+```http
+### Status matches 2xx pattern
+GET https://api.example.com/users
+//# status matches_regex "^2.*"
+
+### Body matches email pattern
+GET https://api.example.com/users/123
+//# body matches_regex ".*@example\.com.*"
+
+### Body matches success pattern
+POST https://api.example.com/process
+//# body matches_regex ".*success.*"
+
+### Header matches application/* pattern
+GET https://api.example.com/api
+//# header["content-type"] matches_regex "application/.*"
+```
+
+<Warning>
+Regex patterns follow standard regular expression syntax. Remember to escape special characters like `.` with `\.`
+</Warning>
+
+### Not Matches Regex (`not_matches_regex`)
+
+Verifies the value does NOT match a regex pattern:
+
+```http
+### Status doesn't match error codes (4xx, 5xx)
+GET https://api.example.com/users
+//# status not_matches_regex "^[45].*"
+
+### Body doesn't match error pattern
+POST https://api.example.com/submit
+//# body not_matches_regex ".*error.*"
+//# body not_matches_regex ".*failed.*"
+```
+
+## Complete Examples
+
+### Status Code Assertions
+
+```http
+### Success response
+GET https://api.example.com/users
+//# status == 200
+
+### Created response
+POST https://api.example.com/users
+Content-Type: application/json
+
+{"name": "Alice"}
+
+//# status == 201
+
+### Not found
+GET https://api.example.com/users/999999
+//# status == 404
+
+### Any 2xx success code
+GET https://api.example.com/resource
+//# status starts_with "2"
+
+### Not an error
+GET https://api.example.com/users
+//# status != 500
+//# status not_matches_regex "^[45].*"
+```
+
+### Header Assertions
+
+```http
+### JSON content type
+GET https://api.example.com/users
+//# header["content-type"] == "application/json"
+
+### Contains charset
+GET https://api.example.com/api
+//# header["content-type"] contains "charset=utf-8"
+
+### Starts with application
+GET https://api.example.com/data
+//# header["content-type"] starts_with "application"
+
+### Cache control
+GET https://api.example.com/public/file
+//# header["cache-control"] contains "max-age"
+//# header["cache-control"] not_contains "no-cache"
+
+### CORS headers
+OPTIONS https://api.example.com/users
+//# header["access-control-allow-origin"] == "*"
+//# header["access-control-allow-methods"] contains "POST"
+```
+
+### Body Assertions
+
+```http
+### Exact body match
+GET https://api.example.com/health
+//# body == "OK"
+
+### Contains expected data
+GET https://api.example.com/users/123
+//# body contains "John Doe"
+//# body contains "john@example.com"
+//# body contains "\"id\":123"
+
+### Multiple contains checks for JSON fields
+GET https://api.example.com/users/123
+//# body contains "name"
+//# body contains "email"
+//# body contains "created_at"
+
+### Doesn't contain error messages
+POST https://api.example.com/users
+Content-Type: application/json
+
+{"name": "Alice"}
+
+//# status == 201
+//# body not_contains "error"
+//# body not_contains "failed"
+//# body contains "Alice"
+
+### Regex pattern matching
+GET https://api.example.com/users/123
+//# body matches_regex ".*@example\\.com.*"
+//# body not_matches_regex ".*error.*"
+```
+
+### Combined Assertions
+
+Combine multiple assertion types for comprehensive validation:
+
+```http
+### Create user with full validation
+POST https://api.example.com/users
+Content-Type: application/json
+Authorization: Bearer ABC123
+
+{
+  "name": "Alice Smith",
+  "email": "alice@example.com"
+}
+
+//# status == 201
+//# header["content-type"] == "application/json"
+//# header["location"] starts_with "/users/"
+//# body contains "Alice Smith"
+//# body contains "alice@example.com"
+//# body contains "id"
+//# body not_contains "error"
+```
+
+## Assertion Implementation
+
+HTTPSpec's assertion engine is implemented in `assertion_checker.zig`. The `AssertionType` enum defines all supported operators:
+
+```zig
+pub const AssertionType = enum {
+    equal,
+    not_equal,
+    contains,
+    not_contains,
+    starts_with,
+    ends_with,
+    matches_regex,
+    not_matches_regex,
+};
+```
+
+<Tip>
+Refer to `src/httpfile/assertion_checker.zig:9-31` in the source code for the complete assertion type implementation.
+</Tip>
+
+## Assertion Failures
+
+When an assertion fails, HTTPSpec:
+
+1. Stops executing requests in that file
+2. Reports the failure with details
+3. Continues with the next test file (if running multiple files)
+
+Example failure output:
+
+```
+[Fail] in test_files/httpbin_test.http:1 Expected status 403, got 404
+```
+
+## Best Practices
+
+### 1. Use the Most Specific Operator
+
+<CodeGroup>
+```http Good: Specific check
+//# status == 200
+```
+
+```http Avoid: Overly broad
+//# status contains "200"
+```
+</CodeGroup>
+
+### 2. Validate Multiple Aspects
+
+Don't just check the status code:
+
+```http
+//# status == 200
+//# header["content-type"] == "application/json"
+//# body contains "expected_field"
+```
+
+### 3. Use Regex for Complex Patterns
+
+```http
+# Validate email format in response
+//# body matches_regex "[a-z0-9]+@[a-z0-9]+\\.[a-z]+"
+
+# Validate UUID format
+//# body matches_regex "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+```
+
+### 4. Verify Absence of Errors
+
+```http
+//# body not_contains "error"
+//# body not_contains "exception"
+//# body not_contains "failed"
+```
+
+### 5. Case Sensitivity
+
+Body and status assertions are case-sensitive, but header name matching is case-insensitive:
+
+```http
+# These are equivalent for headers
+//# header["content-type"] == "application/json"
+//# header["Content-Type"] == "application/json"
+
+# But body matching is case-sensitive
+//# body contains "Alice"  # Won't match "alice"
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Writing Tests" icon="pencil" href="/guides/writing-tests">
+    Best practices for organizing test files
+  </Card>
+  <Card title="Sequential Testing" icon="list-ol" href="/guides/sequential-testing">
+    How requests execute in order within files
+  </Card>
+</CardGroup>

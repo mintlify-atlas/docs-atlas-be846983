@@ -1,0 +1,545 @@
+---
+title: "Parallel Execution"
+description: "How HTTPSpec runs multiple test files concurrently using thread pools"
+---
+
+HTTPSpec can run multiple test files in parallel using a configurable thread pool, dramatically improving test suite performance while maintaining sequential execution within each file.
+
+## How Parallel Execution Works
+
+### Thread Pool Architecture
+
+When you run HTTPSpec with multiple test files, it:
+
+1. Discovers all `.http` and `.httpspec` files
+2. Creates a thread pool with N worker threads
+3. Distributes files across the thread pool
+4. Executes each file independently in parallel
+5. Collects results and reports summary
+
+Implementation in `main.zig:57-71`:
+
+```zig
+// Set up thread pool and reporter.
+var pool: std.Thread.Pool = undefined;
+try pool.init(.{
+    .allocator = allocator,
+    .n_jobs = threads,
+});
+defer pool.deinit();
+
+var wg: std.Thread.WaitGroup = .{};
+var reporter = TestReporter.BasicReporter.init();
+
+// Run all tests in parallel.
+for (files.items) |path| {
+    pool.spawnWg(&wg, runTest, .{ allocator, &reporter, path, stderr });
+}
+wg.wait();
+```
+
+### What Runs in Parallel
+
+<Card title="Different Files" icon="files">
+  Each `.http` or `.httpspec` file runs in its own thread from the pool.
+</Card>
+
+Example:
+```
+tests/
+├── user_tests.http      # Runs in parallel
+├── order_tests.http     # Runs in parallel
+└── auth_tests.http      # Runs in parallel
+```
+
+All three files execute simultaneously on different threads.
+
+### What Runs Sequentially
+
+<Card title="Requests Within a File" icon="list">
+  Requests within the same file always execute sequentially, top to bottom.
+</Card>
+
+Example in `user_tests.http`:
+```http
+### Request 1 - Executes first
+POST https://api.example.com/users
+
+### Request 2 - Executes after Request 1
+GET https://api.example.com/users/123
+
+### Request 3 - Executes after Request 2
+DELETE https://api.example.com/users/123
+```
+
+## Configuring Thread Pool Size
+
+Control parallelism with the `HTTP_THREAD_COUNT` environment variable:
+
+```bash
+# Default: 1 thread (sequential execution)
+httpspec ./tests/
+
+# 4 parallel threads
+HTTP_THREAD_COUNT=4 httpspec ./tests/
+
+# 8 parallel threads
+HTTP_THREAD_COUNT=8 httpspec ./tests/
+
+# 16 parallel threads for maximum performance
+HTTP_THREAD_COUNT=16 httpspec ./tests/
+```
+
+### Finding the Optimal Thread Count
+
+The optimal thread count depends on:
+
+1. **Number of CPU cores**: Start with your CPU core count
+2. **Number of test files**: No benefit to more threads than files
+3. **API rate limits**: Too many threads might hit rate limits
+4. **Network I/O**: HTTP requests are I/O-bound, so you can use more threads than CPU cores
+
+Recommended starting points:
+
+| Scenario | Recommended Thread Count |
+|----------|-------------------------|
+| Local development | 4-8 threads |
+| CI/CD pipeline | 8-16 threads |
+| Rate-limited APIs | 2-4 threads |
+| < 10 test files | Number of files |
+
+<Tip>
+Since HTTP tests are I/O-bound (waiting for network responses), you can safely use more threads than CPU cores. Start with 2x your core count and adjust based on performance.
+</Tip>
+
+## Performance Benefits
+
+### Example: 12 Test Files
+
+Without parallelization (1 thread):
+```
+File 1: 2s
+File 2: 1.5s
+File 3: 3s
+...
+Total: 24s
+```
+
+With parallelization (4 threads):
+```
+Thread 1: File 1 (2s) + File 5 (2s) + File 9 (1s) = 5s
+Thread 2: File 2 (1.5s) + File 6 (3s) + File 10 (1s) = 5.5s
+Thread 3: File 3 (3s) + File 7 (2s) + File 11 (1s) = 6s
+Thread 4: File 4 (2.5s) + File 8 (1.5s) + File 12 (1s) = 5s
+Total: ~6s (4x speedup!)
+```
+
+### Real-World Example
+
+```bash
+# Slow: Run tests sequentially
+time httpspec ./test_files/
+# Result: 45.2 seconds
+
+# Fast: Run with 8 threads
+time HTTP_THREAD_COUNT=8 httpspec ./test_files/
+# Result: 7.1 seconds (6.4x speedup!)
+```
+
+## Test Isolation
+
+Each test file runs in complete isolation:
+
+### Memory Isolation
+
+Every test file gets its own arena allocator in `main.zig:113-116`:
+
+```zig
+// Create arena allocator for this test to provide memory isolation
+var arena = std.heap.ArenaAllocator.init(base_allocator);
+defer arena.deinit(); // Automatically frees all test allocations
+const allocator = arena.allocator();
+```
+
+This ensures:
+- No memory leaks between tests
+- Automatic cleanup when test completes
+- Tests cannot interfere with each other's memory
+
+### Request Independence
+
+<Warning>
+Tests running in parallel cannot share state. Each file must be self-contained.
+</Warning>
+
+<CodeGroup>
+```http Good: Self-contained
+### user_tests.http
+POST https://api.example.com/users
+{"name": "Alice"}
+
+//# status == 201
+
+GET https://api.example.com/users/123
+//# status == 200
+```
+
+```http Bad: Depends on other file
+### create_user.http
+POST https://api.example.com/users
+{"name": "Alice"}
+
+### get_user.http (different file!)
+GET https://api.example.com/users/123  # Might run before create!
+//# status == 200
+```
+</CodeGroup>
+
+## Best Practices
+
+### 1. Design for Parallelism
+
+Make each test file independent:
+
+```
+tests/
+├── create_user_alice.http    # Creates user "alice"
+├── create_user_bob.http      # Creates user "bob"
+└── create_user_charlie.http  # Creates user "charlie"
+```
+
+Each file creates a different user, so they can run in parallel without conflicts.
+
+### 2. Use Unique Identifiers
+
+Avoid conflicts by using unique data:
+
+```http
+### Create user with unique email
+POST https://api.example.com/users
+Content-Type: application/json
+
+{
+  "name": "Test User",
+  "email": "test-{{ $timestamp }}@example.com"
+}
+
+//# status == 201
+```
+
+<Note>
+Note: HTTPSpec doesn't currently support variable substitution or timestamp generation. Use unique static values or implement this in your API.
+</Note>
+
+### 3. Avoid Shared Resources
+
+Don't have multiple tests modify the same resource:
+
+<CodeGroup>
+```http Good: Independent resources
+### test_1.http
+PUT https://api.example.com/settings/feature_a
+{"enabled": true}
+
+### test_2.http
+PUT https://api.example.com/settings/feature_b
+{"enabled": true}
+```
+
+```http Bad: Same resource
+### test_1.http
+PUT https://api.example.com/settings/dark_mode
+{"enabled": true}
+
+### test_2.http
+PUT https://api.example.com/settings/dark_mode
+{"enabled": false}
+```
+</CodeGroup>
+
+### 4. Group Related Sequential Tests
+
+Keep dependent requests in the same file:
+
+```http user_workflow.http
+### Create user
+POST https://api.example.com/users
+{"name": "Alice"}
+
+//# status == 201
+
+### Update user (depends on creation)
+PUT https://api.example.com/users/123
+{"name": "Alice Updated"}
+
+//# status == 200
+
+### Delete user (depends on existence)
+DELETE https://api.example.com/users/123
+
+//# status == 204
+```
+
+### 5. Monitor Performance
+
+Measure speedup as you add threads:
+
+```bash
+# Benchmark different thread counts
+for threads in 1 2 4 8 16; do
+  echo "Testing with $threads threads:"
+  time HTTP_THREAD_COUNT=$threads httpspec ./tests/
+done
+```
+
+Look for diminishing returns:
+```
+1 thread:  45s (baseline)
+2 threads: 24s (1.9x speedup)
+4 threads: 13s (3.5x speedup)
+8 threads:  8s (5.6x speedup)
+16 threads: 7s (6.4x speedup) ← diminishing returns
+32 threads: 7s (6.4x speedup) ← no improvement
+```
+
+### 6. Consider API Rate Limits
+
+Some APIs limit concurrent requests:
+
+```bash
+# GitHub API allows ~60 req/min unauthenticated
+# Use fewer threads to stay under limit
+HTTP_THREAD_COUNT=2 httpspec ./github_tests/
+
+# Your internal API might handle more
+HTTP_THREAD_COUNT=16 httpspec ./internal_tests/
+```
+
+## Handling Failures
+
+### Independent Failure Handling
+
+When one test file fails, others continue:
+
+```
+tests/
+├── test_1.http  # Passes ✓
+├── test_2.http  # Fails ✗
+├── test_3.http  # Passes ✓
+└── test_4.http  # Passes ✓
+```
+
+Output:
+```
+[Fail] in tests/test_2.http:5 Expected status 200, got 404
+
+Pass: 3
+Fail: 1
+```
+
+All four files ran in parallel, and three succeeded despite one failure.
+
+### Early Exit Within File
+
+Failures only stop the current file (see [Sequential Testing](/guides/sequential-testing)):
+
+```http test_2.http
+### Request 1
+GET https://api.example.com/endpoint1
+//# status == 200  # Fails!
+
+### Request 2
+GET https://api.example.com/endpoint2  # Never executes
+```
+
+But `test_1.http`, `test_3.http`, and `test_4.http` complete successfully in parallel.
+
+## Implementation Details
+
+### Thread Count Parsing
+
+From `main.zig:26`:
+
+```zig
+// Determine thread count from environment.
+const threads = std.process.parseEnvVarInt("HTTP_THREAD_COUNT", usize, 10) catch 1;
+```
+
+Defaults to 1 thread if:
+- Environment variable not set
+- Invalid value provided
+- Parse error occurs
+
+### File Discovery
+
+HTTPSpec recursively finds all test files in `main.zig:161-185`:
+
+```zig
+fn listHttpFiles(allocator: std.mem.Allocator, dir: []const u8) ![][]const u8 {
+    var files: std.ArrayList([]const u8) = .empty;
+    
+    var dir_entry = try std.fs.cwd().openDir(dir, .{ .iterate = true });
+    var it = dir_entry.iterate();
+    while (try it.next()) |entry| {
+        if (entry.kind == .directory) {
+            // Recurse into subdirectories
+            const sub_files = try listHttpFiles(allocator, subdir);
+            for (sub_files) |file| try files.append(allocator, file);
+        } else if (std.mem.eql(u8, std.fs.path.extension(entry.name), ".http") or
+            std.mem.eql(u8, std.fs.path.extension(entry.name), ".httpspec"))
+        {
+            // Add .http and .httpspec files
+            try files.append(allocator, file_path);
+        }
+    }
+    return files.toOwnedSlice(allocator);
+}
+```
+
+### Work Distribution
+
+The thread pool distributes work automatically:
+
+```zig
+// Run all tests in parallel.
+for (files.items) |path| {
+    pool.spawnWg(&wg, runTest, .{ allocator, &reporter, path, stderr });
+}
+wg.wait();
+```
+
+Each `pool.spawnWg` call:
+1. Finds an available thread in the pool
+2. Assigns the file to that thread
+3. Executes `runTest` function with the file path
+
+The WaitGroup (`wg`) ensures the main thread waits for all tests to complete.
+
+## Comparison: Sequential vs Parallel
+
+| Aspect | Sequential (1 thread) | Parallel (N threads) |
+|--------|----------------------|---------------------|
+| Speed | Slowest | N× faster (approx) |
+| Resource usage | Minimal | Higher CPU/memory |
+| Debugging | Easier | More complex |
+| Setup | None required | Set `HTTP_THREAD_COUNT` |
+| Use case | Development, debugging | CI/CD, large test suites |
+| Dependencies | Can share state | Must be independent |
+
+## Common Issues
+
+### Race Conditions
+
+<Warning>
+Two tests modifying the same resource can cause race conditions:
+</Warning>
+
+```http test_a.http
+PUT https://api.example.com/counter
+{"value": 100}
+```
+
+```http test_b.http
+PUT https://api.example.com/counter
+{"value": 200}
+```
+
+Since both run in parallel, the final counter value is unpredictable.
+
+**Solution**: Use different resources or make tests in the same file.
+
+### Resource Exhaustion
+
+Too many threads can overwhelm your system:
+
+```bash
+# Bad: More threads than CPU cores + files
+HTTP_THREAD_COUNT=128 httpspec ./tests/  # Only 5 files!
+```
+
+**Solution**: Match thread count to file count and system capacity.
+
+### API Rate Limiting
+
+Parallel requests might trigger rate limits:
+
+```
+Error: 429 Too Many Requests
+```
+
+**Solution**: Reduce thread count or add delays between requests (not currently supported in HTTPSpec).
+
+## Tips for Large Test Suites
+
+### 1. Organize by Domain
+
+```
+tests/
+├── auth/
+│   ├── login.http
+│   └── logout.http
+├── users/
+│   ├── create.http
+│   └── update.http
+└── orders/
+    ├── place_order.http
+    └── cancel_order.http
+```
+
+### 2. Balance File Sizes
+
+Distribute requests evenly across files for better parallelization:
+
+<CodeGroup>
+```text Good: Balanced
+file_1.http: 3 requests
+file_2.http: 3 requests
+file_3.http: 3 requests
+file_4.http: 3 requests
+```
+
+```text Bad: Unbalanced
+file_1.http: 15 requests
+file_2.http: 1 request
+file_3.http: 1 request
+file_4.http: 1 request
+```
+</CodeGroup>
+
+With 4 threads, the unbalanced case still takes as long as `file_1.http` alone.
+
+### 3. Use CI/CD Optimization
+
+In continuous integration:
+
+```yaml .github/workflows/test.yml
+- name: Run HTTPSpec tests
+  run: HTTP_THREAD_COUNT=16 httpspec ./tests/
+  env:
+    HTTP_THREAD_COUNT: 16
+```
+
+### 4. Profile Your Tests
+
+Identify slow tests:
+
+```bash
+# Run with timing
+for file in tests/*.http; do
+  echo "Testing $file"
+  time httpspec "$file"
+done
+```
+
+Optimize or split slow tests into multiple files.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Sequential Testing" icon="list-ol" href="/guides/sequential-testing">
+    Learn how requests execute within files
+  </Card>
+  <Card title="Writing Tests" icon="pencil" href="/guides/writing-tests">
+    Best practices for organizing test files
+  </Card>
+</CardGroup>

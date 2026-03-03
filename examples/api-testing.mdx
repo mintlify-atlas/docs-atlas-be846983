@@ -1,0 +1,347 @@
+---
+title: "API Testing Examples"
+description: "Test REST APIs with request bodies, headers, and response validation using HTTPSpec"
+---
+
+## Testing REST API Endpoints
+
+HTTPSpec is ideal for testing REST APIs. Here's how to test different HTTP methods:
+
+<CodeGroup>
+
+```http GET Request
+### Fetch user data
+GET https://jsonplaceholder.typicode.com/users/1
+Accept: application/json
+
+//# status == 200
+//# body contains "Leanne Graham"
+```
+
+```http POST Request
+### Create new user
+POST https://api.example.com/users
+Content-Type: application/json
+Authorization: Bearer ABC123
+
+{
+  "name": "John Doe",
+  "email": "john@example.com"
+}
+
+//# status == 201
+//# body contains "id"
+```
+
+```http PUT Request
+### Update user
+PUT https://api.example.com/users/123
+Content-Type: application/json
+Authorization: Bearer ABC123
+
+{
+  "name": "Jane Doe",
+  "email": "jane@example.com"
+}
+
+//# status == 200
+```
+
+```http DELETE Request
+### Delete user
+DELETE https://api.example.com/users/123
+Authorization: Bearer ABC123
+
+//# status == 204
+```
+
+</CodeGroup>
+
+## Checking Response Headers
+
+Validate that your API returns the correct content type and other headers:
+
+```http
+### Verify JSON response headers
+GET https://httpbin.org/json
+Accept: application/json
+
+//# status == 200
+//# header["content-type"] contains "application/json"
+```
+
+<Note>
+Header names are case-insensitive. Use the format `header["header-name"]` to check specific headers.
+</Note>
+
+### Common Header Checks
+
+<CodeGroup>
+
+```http Content-Type
+//# header["content-type"] == "application/json"
+//# header["content-type"] contains "json"
+```
+
+```http CORS Headers
+//# header["access-control-allow-origin"] == "*"
+//# header["access-control-allow-methods"] contains "GET"
+```
+
+```http Cache Control
+//# header["cache-control"] contains "no-cache"
+//# header["cache-control"] != "public"
+```
+
+```http Authentication
+//# header["www-authenticate"] contains "Bearer"
+```
+
+</CodeGroup>
+
+## Body Content Validation
+
+HTTPSpec provides several ways to validate response bodies:
+
+### Exact Match
+
+Check if the body exactly matches a string:
+
+```http
+GET https://api.example.com/health
+
+//# body == "OK"
+```
+
+### Contains Check
+
+Verify the body contains specific content:
+
+```http
+### Test JSONPlaceholder API
+GET https://jsonplaceholder.typicode.com/users/1
+Accept: application/json
+
+//# status == 200
+//# body contains "Leanne Graham"
+//# body contains "@hildegard.org"
+```
+
+### Not Contains
+
+Ensure the body doesn't contain sensitive or error data:
+
+```http
+GET https://api.example.com/public/users
+
+//# body not_contains "password"
+//# body not_contains "secret"
+//# body not_contains "error"
+```
+
+## Real-World Example: HTTPBin Testing
+
+Here's a complete example testing the HTTPBin API:
+
+```http
+### Make a simple 200 request to HTTP Bin
+GET http://httpbin.org/status/200
+Content-Type: application/json
+
+### Make a simple 404 request to HTTP Bin
+GET http://httpbin.org/status/404
+Content-Type: application/json
+
+//# status == 404
+```
+
+<Note>
+This example demonstrates how HTTPSpec handles different status codes. The second request explicitly checks for a 404 response.
+</Note>
+
+## Sequential API Operations (CRUD Pattern)
+
+Test a complete workflow by chaining requests:
+
+```http
+### Create a new resource
+POST https://api.example.com/posts
+Content-Type: application/json
+Authorization: Bearer TOKEN
+
+{
+  "title": "Test Post",
+  "body": "This is a test post",
+  "userId": 1
+}
+
+//# status == 201
+//# body contains "id"
+//# header["content-type"] contains "application/json"
+
+### Read the created resource
+GET https://api.example.com/posts/1
+Accept: application/json
+Authorization: Bearer TOKEN
+
+//# status == 200
+//# body contains "Test Post"
+//# body contains "This is a test post"
+
+### Update the resource
+PUT https://api.example.com/posts/1
+Content-Type: application/json
+Authorization: Bearer TOKEN
+
+{
+  "title": "Updated Test Post",
+  "body": "This post has been updated",
+  "userId": 1
+}
+
+//# status == 200
+//# body contains "Updated Test Post"
+
+### Delete the resource
+DELETE https://api.example.com/posts/1
+Authorization: Bearer TOKEN
+
+//# status == 204
+```
+
+<Warning>
+Requests are executed sequentially in the order they appear. This is perfect for testing workflows, but be aware that later tests may depend on earlier ones succeeding.
+</Warning>
+
+## Testing Different Status Codes
+
+HTTPSpec makes it easy to test various HTTP status codes:
+
+<Tabs>
+  <Tab title="2xx Success">
+    ```http
+    ### Test 200 OK
+    GET http://httpbin.org/status/200
+    //# status == 200
+
+    ### Test 201 Created
+    GET http://httpbin.org/status/201
+    //# status == 201
+
+    ### Test 204 No Content
+    GET http://httpbin.org/status/204
+    //# status == 204
+    ```
+  </Tab>
+  <Tab title="4xx Client Errors">
+    ```http
+    ### Test 400 Bad Request
+    GET http://httpbin.org/status/400
+    //# status == 400
+
+    ### Test 401 Unauthorized
+    GET http://httpbin.org/status/401
+    //# status == 401
+
+    ### Test 404 Not Found
+    GET http://httpbin.org/status/404
+    //# status == 404
+    ```
+  </Tab>
+  <Tab title="5xx Server Errors">
+    ```http
+    ### Test 500 Internal Server Error
+    GET http://httpbin.org/status/500
+    //# status == 500
+
+    ### Test 503 Service Unavailable
+    GET http://httpbin.org/status/503
+    //# status == 503
+    ```
+  </Tab>
+</Tabs>
+
+## Authentication Testing
+
+Test various authentication methods:
+
+<CodeGroup>
+
+```http Bearer Token
+### Test with Bearer token
+GET https://api.example.com/protected
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+//# status == 200
+//# body contains "authenticated"
+```
+
+```http Basic Auth
+### Test with Basic Auth
+GET https://httpbin.org/basic-auth/user/passwd
+Authorization: Basic dXNlcjpwYXNzd2Q=
+
+//# status == 200
+```
+
+```http API Key
+### Test with API key
+GET https://api.example.com/data
+X-API-Key: your-api-key-here
+
+//# status == 200
+```
+
+</CodeGroup>
+
+## Best Practices for API Testing
+
+<AccordionGroup>
+  <Accordion title="Test happy paths and error cases">
+    Always test both successful responses and expected failures:
+    ```http
+    ### Valid request should succeed
+    GET https://api.example.com/users/1
+    //# status == 200
+
+    ### Invalid ID should fail
+    GET https://api.example.com/users/999999
+    //# status == 404
+    ```
+  </Accordion>
+
+  <Accordion title="Validate response structure">
+    Use contains to check for expected fields in JSON responses:
+    ```http
+    //# body contains "id"
+    //# body contains "email"
+    //# body contains "created_at"
+    ```
+  </Accordion>
+
+  <Accordion title="Check headers for API compliance">
+    Ensure your API returns proper headers:
+    ```http
+    //# header["content-type"] == "application/json"
+    //# header["x-api-version"] == "v1"
+    ```
+  </Accordion>
+
+  <Accordion title="Use environment-specific endpoints">
+    Create separate test files for different environments:
+    - `api-test-dev.http` - Development API
+    - `api-test-staging.http` - Staging API
+    - `api-test-prod.http` - Production smoke tests
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Advanced Assertions" icon="check-double" href="/examples/advanced-assertions">
+    Learn about regex matching, negation, and complex assertions
+  </Card>
+  <Card title="Basic Tests" icon="flask" href="/examples/basic-tests">
+    Back to basic testing examples
+  </Card>
+</CardGroup>

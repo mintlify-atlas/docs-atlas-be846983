@@ -1,0 +1,429 @@
+---
+title: "Sequential Testing"
+description: "Understanding sequential request execution and test flow control in HTTPSpec"
+---
+
+HTTPSpec executes requests sequentially within each test file, stopping on the first assertion failure. This design enables powerful testing patterns for workflows that require ordered operations.
+
+## How Sequential Execution Works
+
+### Within a Single File
+
+Requests in the same `.http` or `.httpspec` file execute in order from top to bottom:
+
+```http
+### Step 1: Create user
+POST https://api.example.com/users
+Content-Type: application/json
+
+{"name": "Alice"}
+
+//# status == 201
+
+### Step 2: Fetch the user
+GET https://api.example.com/users/123
+
+//# status == 200
+//# body contains "Alice"
+
+### Step 3: Update the user
+PUT https://api.example.com/users/123
+Content-Type: application/json
+
+{"name": "Alice Updated"}
+
+//# status == 200
+```
+
+Execution flow:
+1. Request 1 executes → assertions checked → **passes** → continue
+2. Request 2 executes → assertions checked → **passes** → continue  
+3. Request 3 executes → assertions checked → **passes** → test complete
+
+### Stopping on Failure
+
+If any assertion fails, subsequent requests in that file do NOT execute:
+
+```http
+### Make a simple 200 request to HTTP Bin
+GET http://httpbin.org/status/200
+Content-Type: application/json
+
+### Make a simple 404 request to HTTP Bin
+GET http://httpbin.org/status/404
+Content-Type: application/json
+//# status == 403
+
+### Make a simple 201 request to HTTP Bin
+GET http://httpbin.org/status/201
+Content-Type: application/json
+```
+
+Execution flow:
+1. First request (200) → no assertions → **passes** → continue
+2. Second request (404) → asserts status == 403 → **fails** → STOP
+3. Third request (201) → **never executes**
+
+Output:
+```
+[Fail] Expected status code 403, got 404
+```
+
+<Warning>
+Once an assertion fails, all subsequent requests in that file are skipped. Design your test files with this behavior in mind.
+</Warning>
+
+## Use Cases for Sequential Testing
+
+Sequential execution enables several important testing patterns:
+
+### 1. Setup and Teardown
+
+Create resources, test them, then clean up:
+
+```http
+### Setup: Create test user
+POST https://api.example.com/users
+Content-Type: application/json
+Authorization: Bearer ABC123
+
+{
+  "name": "Test User",
+  "email": "test@example.com"
+}
+
+//# status == 201
+//# body contains "Test User"
+
+### Test: Verify user exists
+GET https://api.example.com/users/123
+Authorization: Bearer ABC123
+
+//# status == 200
+//# body contains "test@example.com"
+
+### Teardown: Delete test user
+DELETE https://api.example.com/users/123
+Authorization: Bearer ABC123
+
+//# status == 204
+```
+
+### 2. Dependent Requests
+
+Test workflows where later requests depend on earlier ones:
+
+```http
+### Create an order
+POST https://api.example.com/orders
+Content-Type: application/json
+Authorization: Bearer ABC123
+
+{
+  "user_id": 123,
+  "items": [{"product_id": 456, "quantity": 2}]
+}
+
+//# status == 201
+//# body contains "order_id"
+
+### Add item to the order
+POST https://api.example.com/orders/789/items
+Content-Type: application/json
+Authorization: Bearer ABC123
+
+{"product_id": 999, "quantity": 1}
+
+//# status == 200
+
+### Complete the order
+POST https://api.example.com/orders/789/complete
+Authorization: Bearer ABC123
+
+//# status == 200
+//# body contains "completed"
+```
+
+<Note>
+Currently, HTTPSpec does not support extracting values from one response to use in the next request. This is a planned feature. For now, you'll need to hardcode IDs or use predictable values.
+</Note>
+
+### 3. State Transitions
+
+Test state machines and workflows:
+
+```http
+### Create draft document
+POST https://api.example.com/documents
+Content-Type: application/json
+
+{"title": "My Document", "status": "draft"}
+
+//# status == 201
+//# body contains "draft"
+
+### Submit for review
+POST https://api.example.com/documents/123/submit
+
+//# status == 200
+//# body contains "pending_review"
+
+### Approve document
+POST https://api.example.com/documents/123/approve
+
+//# status == 200
+//# body contains "approved"
+
+### Publish document
+POST https://api.example.com/documents/123/publish
+
+//# status == 200
+//# body contains "published"
+```
+
+### 4. Testing Error Recovery
+
+Verify that the system recovers from error states:
+
+```http
+### Attempt invalid operation
+POST https://api.example.com/invalid-endpoint
+
+//# status == 404
+
+### Verify system still works
+GET https://api.example.com/health
+
+//# status == 200
+//# body == "OK"
+```
+
+### 5. Multi-Step Authentication
+
+Test authentication flows:
+
+```http
+### Request auth token
+POST https://api.example.com/auth/login
+Content-Type: application/json
+
+{
+  "username": "alice",
+  "password": "secret123"
+}
+
+//# status == 200
+//# body contains "token"
+
+### Use token to access protected resource
+GET https://api.example.com/protected/data
+Authorization: Bearer ABC123
+
+//# status == 200
+
+### Logout
+POST https://api.example.com/auth/logout
+Authorization: Bearer ABC123
+
+//# status == 200
+```
+
+## Implementation Details
+
+HTTPSpec's sequential execution is implemented in `main.zig:136-152`:
+
+```zig
+for (owned_items) |*owned_item| {
+    var responses = client.execute(owned_item) catch |err| {
+        reporter.incTestInvalid();
+        return;
+    };
+    defer responses.deinit();
+    var diagnostic = AssertionChecker.AssertionDiagnostic.init(allocator);
+    defer diagnostic.deinit();
+    AssertionChecker.check(owned_item, responses, &diagnostic, path);
+    if (AssertionChecker.hasFailures(&diagnostic)) {
+        AssertionChecker.reportFailures(&diagnostic, stderr) catch {};
+        has_failure = true;
+        break;  // Stop on first failure
+    }
+}
+```
+
+Key points:
+- Requests loop in order
+- Each request is executed and checked
+- `break` exits the loop on first failure
+- Remaining requests are never executed
+
+## Requests Without Assertions
+
+Requests without assertions still execute and must succeed (no HTTP errors):
+
+```http
+### This request has no assertions but must complete successfully
+GET https://api.example.com/users
+Content-Type: application/json
+
+### This request will execute if the previous one succeeds
+GET https://api.example.com/users/123
+
+//# status == 200
+```
+
+If the first request fails (network error, connection timeout, etc.), the test fails even without explicit assertions.
+
+## Best Practices
+
+### 1. Order Requests Logically
+
+Put setup requests first, cleanup last:
+
+```http
+### Setup
+POST /create-resource
+
+### Test
+GET /resource
+
+### Cleanup
+DELETE /resource
+```
+
+### 2. Use Descriptive Names
+
+Make the sequence clear:
+
+```http
+### Step 1: Create user
+### Step 2: Verify creation
+### Step 3: Update user
+### Step 4: Verify update
+```
+
+### 3. Fail Fast with Early Assertions
+
+Put critical assertions early to avoid wasted requests:
+
+<CodeGroup>
+```http Good: Check auth first
+### Verify authentication works
+GET https://api.example.com/auth/verify
+Authorization: Bearer ABC123
+
+//# status == 200
+
+### Now do the actual test
+POST https://api.example.com/users
+```
+
+```http Avoid: Critical check last
+### Do expensive operation
+POST https://api.example.com/users
+
+### Only then check if auth works
+GET https://api.example.com/auth/verify
+//# status == 200
+```
+</CodeGroup>
+
+### 4. Keep Files Focused
+
+Don't make files too long. Split complex workflows:
+
+```
+tests/
+├── user_creation.http       # Just creation tests
+├── user_update.http         # Just update tests
+└── user_deletion.http       # Just deletion tests
+```
+
+### 5. Document Dependencies
+
+Use comments to explain why order matters:
+
+```http
+### Create user (required for subsequent tests)
+POST https://api.example.com/users
+Content-Type: application/json
+
+{"name": "Alice"}
+
+//# status == 201
+
+### Fetch user (depends on previous request)
+GET https://api.example.com/users/123
+
+//# status == 200
+```
+
+## Common Pitfalls
+
+### Don't Assume Request State
+
+<Warning>
+Each file runs independently. Don't rely on state from other files:
+</Warning>
+
+```http file_1.http
+### Create user with ID 123
+POST https://api.example.com/users
+```
+
+```http file_2.http
+### This might fail if file_1.http hasn't run!
+GET https://api.example.com/users/123
+```
+
+### Handle Cleanup Failures
+
+If cleanup fails, subsequent test runs might have issues:
+
+```http
+### Test
+POST https://api.example.com/users
+
+//# status == 201
+
+### Cleanup - if this fails, user stays in DB
+DELETE https://api.example.com/users/123
+
+//# status == 204
+```
+
+Consider using unique identifiers or timestamps to avoid conflicts.
+
+### Remember Files Stop on Failure
+
+This catches some developers by surprise:
+
+```http
+### This will fail
+GET https://api.example.com/users/999999
+//# status == 200  # Expected 200 but gets 404
+
+### This cleanup will NEVER run
+DELETE https://api.example.com/users/999999
+```
+
+## Comparing Sequential vs Parallel
+
+| Aspect | Within a File | Across Files |
+|--------|---------------|-------------|
+| Execution | Sequential | Parallel |
+| On failure | Stop file | Continue other files |
+| Dependencies | Allowed | Not allowed |
+| Use case | Workflows | Independent tests |
+
+See [Parallel Execution](/guides/parallel-execution) for more details on how HTTPSpec runs multiple files concurrently.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Parallel Execution" icon="bolt" href="/guides/parallel-execution">
+    Learn how HTTPSpec runs multiple files in parallel
+  </Card>
+  <Card title="Assertion Types" icon="check" href="/guides/assertion-types">
+    Explore all available assertion operators
+  </Card>
+</CardGroup>

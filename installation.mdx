@@ -1,0 +1,158 @@
+---
+title: Installation
+description: Install HTTPSpec on Linux, macOS, or Windows
+---
+
+HTTPSpec is distributed as pre-built binaries for all major platforms. Download the appropriate binary for your system and add it to your PATH.
+
+## Download Pre-built Binaries
+
+<Steps>
+  <Step title="Choose your platform">
+    Select the correct binary for your operating system and architecture:
+
+    <CodeGroup>
+      ```bash Linux ARM
+      binary="httpspec_linux_arm"
+      ```
+
+      ```bash Linux x86
+      binary="httpspec_linux_x86"
+      ```
+
+      ```bash macOS ARM (Apple Silicon)
+      binary="httpspec_mac_arm"
+      ```
+
+      ```bash macOS x86 (Intel)
+      binary="httpspec_mac_x86"
+      ```
+
+      ```bash Windows x86
+      binary="httpspec_windows_x86"
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Download the latest release">
+    Use `curl` to download the binary from GitHub releases:
+
+    ```bash
+    # Download the binary (replace $binary with your platform)
+    curl -L -o httpspec https://github.com/bradcypert/httpspec/releases/latest/download/$binary
+    ```
+
+    This downloads the latest version and saves it as `httpspec` in your current directory.
+  </Step>
+
+  <Step title="Make the binary executable">
+    On Linux and macOS, you need to set executable permissions:
+
+    ```bash
+    chmod 744 httpspec
+    ```
+
+    <Note>
+      Windows users can skip this step.
+    </Note>
+  </Step>
+
+  <Step title="Add to PATH">
+    Move the binary to a directory in your PATH. On Linux and macOS:
+
+    ```bash
+    mv httpspec /usr/local/bin
+    ```
+
+    On Windows, you can:
+    - Move `httpspec.exe` to `C:\Windows\System32`, or
+    - Add the directory containing `httpspec.exe` to your PATH environment variable
+
+    <Warning>
+      Make sure `/usr/local/bin` (or your chosen directory) is in your PATH. You can verify this by running `echo $PATH`.
+    </Warning>
+  </Step>
+
+  <Step title="Verify installation">
+    Confirm HTTPSpec is installed correctly:
+
+    ```bash
+    httpspec --help
+    ```
+
+    You should see the help output showing available options.
+  </Step>
+</Steps>
+
+## Complete Installation Example
+
+<Warning>
+  Do not blindly copy/paste this script. Read it and run only the parts that apply to your system.
+</Warning>
+
+```bash
+# Use the appropriate binary for your OS and Arch
+binary="httpspec_linux_arm"    # linux arm
+binary="httpspec_linux_x86"    # linux x86
+binary="httpspec_mac_arm"      # mac arm 
+binary="httpspec_mac_x86"      # mac x86
+binary="httpspec_windows_x86"  # windows
+
+# curl, follow redirects, output to "httpspec", download target latest release
+curl -L -o httpspec https://github.com/bradcypert/httpspec/releases/latest/download/$binary
+
+# You _may_ need to update permissions for httpspec
+chmod 744 httpspec
+
+# You probably also want to move this to a place that exists in your path
+mv httpspec /usr/local/bin
+```
+
+## Building from Source
+
+If you prefer to build HTTPSpec from source, you'll need the Zig compiler.
+
+<Steps>
+  <Step title="Install Zig">
+    HTTPSpec is written in Zig. Download and install Zig from [ziglang.org](https://ziglang.org/download/).
+
+    The project specifies the required Zig version in `.tool-versions`.
+  </Step>
+
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/bradcypert/httpspec.git
+    cd httpspec
+    ```
+  </Step>
+
+  <Step title="Build the project">
+    ```bash
+    zig build
+    ```
+
+    This compiles HTTPSpec and places the binary in `zig-out/bin/httpspec`.
+  </Step>
+
+  <Step title="Install the binary">
+    ```bash
+    zig build install
+    ```
+
+    Or manually copy the binary to your PATH:
+
+    ```bash
+    cp zig-out/bin/httpspec /usr/local/bin/
+    ```
+  </Step>
+</Steps>
+
+## Next Steps
+
+Now that HTTPSpec is installed, you're ready to create your first test!
+
+<CardGroup cols={1}>
+  <Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+    Learn how to create and run your first HTTPSpec test
+  </Card>
+</CardGroup>

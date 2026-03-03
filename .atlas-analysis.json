@@ -1,0 +1,77 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "HTTPSpec",
+  "projectDescription": "A CLI tool for running HTTP files as integration tests with assertions",
+  "theme": "aspen",
+  "primaryColor": "#5B8DEE",
+  "lightColor": "#7BA8FF",
+  "darkColor": "#3D5BA8",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "File Format",
+        "pages": [
+          "format/overview",
+          "format/requests",
+          "format/assertions",
+          "format/variables"
+        ]
+      },
+      {
+        "group": "Command Reference",
+        "pages": [
+          "commands/run",
+          "commands/configuration"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/writing-tests",
+          "guides/assertion-types",
+          "guides/sequential-testing",
+          "guides/parallel-execution"
+        ]
+      },
+      {
+        "group": "Examples",
+        "pages": [
+          "examples/basic-tests",
+          "examples/api-testing",
+          "examples/advanced-assertions"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/assertion-operators",
+          "reference/environment-variables",
+          "reference/troubleshooting"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "HTTP file parsing with assertion support",
+    "Sequential request execution",
+    "Multiple assertion types (status, headers, body)",
+    "Parallel test execution with thread pools",
+    "Comprehensive test reporting",
+    "Support for .http and .httpspec file formats"
+  ],
+  "publicApiSurface": [
+    "httpspec [files/directories] - Run HTTP spec tests",
+    "HTTP_THREAD_COUNT - Configure parallel execution",
+    "Assertion types: status, header, body, contains, not_contains",
+    "Request methods: GET, POST, PUT, DELETE, PATCH, etc.",
+    "File discovery: Recursive .http/.httpspec file detection"
+  ]
+}
